@@ -266,119 +266,91 @@ st.markdown("""
         border-right: 1px solid #e2e8f0 !important;
     }
 
-    /* DASHBOARD TOP BANNER HEADER (EXACTLY LIKE SCREENSHOT) */
-    .dashboard-header {
-        background-color: #172133;
+    /* TOP BANNER WRAPPER */
+    .top-banner {
+        background-color: #172133 !important;
         border-radius: 12px;
         padding: 24px 32px;
         margin-bottom: 24px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        width: 100%;
     }
 
-    .dashboard-title-container {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .dashboard-main-title {
+    .banner-title {
         font-size: 24px !important;
         font-weight: 800 !important;
         color: #ffffff !important;
-        margin: 0;
-        display: flex;
-        align-items: center;
-        gap: 10px;
+        margin: 0 !important;
+        line-height: 1.2;
     }
 
-    .dashboard-subtitle {
-        font-size: 12px !important;
+    .banner-sub {
+        font-size: 13px !important;
         color: #94a3b8 !important;
-        margin-top: 6px;
+        margin-top: 6px !important;
     }
 
-    .dashboard-logo-container {
+    .logo-box {
         background: #ffffff;
-        padding: 8px 12px;
+        padding: 6px 12px;
         border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
-        min-width: 90px;
-        height: 48px;
+        float: right;
     }
 
-    .dashboard-logo-container img {
-        max-height: 32px;
+    .logo-box img {
+        height: 36px;
         width: auto;
-        object-fit: contain;
     }
 
-    /* MODULE DASHBOARD CARDS GRID */
-    .modules-container {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 20px;
-        margin-bottom: 30px;
-    }
-
-    .module-card {
+    /* MODULE CARDS STYLING */
+    .card-box {
         background: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         padding: 24px;
+        min-height: 210px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        height: 100%;
         box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-        transition: transform 0.2s, box-shadow 0.2s;
     }
 
-    .module-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(0,0,0,0.06);
-    }
-
-    .module-icon {
-        width: 36px;
-        height: 36px;
+    .card-icon {
+        width: 38px;
+        height: 38px;
         border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-bottom: 16px;
+        margin-bottom: 14px;
         font-size: 18px;
     }
 
-    .icon-blue { background: #eff6ff; color: #2563eb; }
-    .icon-green { background: #f0fdf4; color: #16a34a; }
-    .icon-purple { background: #faf5ff; color: #9333ea; }
+    .icon-blue { background: #eff6ff; }
+    .icon-green { background: #f0fdf4; }
+    .icon-purple { background: #faf5ff; }
 
-    .module-title {
-        font-size: 15px !important;
+    .card-title {
+        font-size: 16px !important;
         font-weight: 700 !important;
         color: #0f172a;
         margin-bottom: 8px;
     }
 
-    .module-desc {
+    .card-desc {
         font-size: 12px !important;
         color: #64748b;
         line-height: 1.5;
-        margin-bottom: 20px;
+        margin-bottom: 16px;
     }
 
-    .module-link {
+    .card-link {
         font-size: 13px !important;
         font-weight: 600;
         color: #2563eb;
         text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
     }
 
     .step-header {
@@ -498,53 +470,63 @@ with st.sidebar:
 
 # Prepare Base64 Logo for Top Header
 logo_b64 = get_base64_image(get_image_path("logo.png"))
-logo_html = f'<img src="data:image/png;base64,{logo_b64}" alt="win square"/>' if logo_b64 else '<span style="font-weight:bold; color:#1e293b;">win square</span>'
+logo_img_tag = f'<img src="data:image/png;base64,{logo_b64}" alt="win square"/>' if logo_b64 else '<b style="color:#0f172a;">win square</b>'
 
-# Header Card Dashboard (As per provided Screenshot)
+# HEADER BANNER
 st.markdown(f"""
-    <div class="dashboard-header">
-        <div class="dashboard-title-container">
-            <div class="dashboard-main-title">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                Winsquare MIS DASHBOARD
+    <div class="top-banner">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div class="banner-title">📈 Winsquare MIS DASHBOARD</div>
+                <div class="banner-sub">Central Gateway for Processing, BOQ Extraction & Project Management Modules</div>
             </div>
-            <div class="dashboard-subtitle">Central Gateway for Processing, BOQ Extraction & Project Management Modules</div>
-        </div>
-        <div class="dashboard-logo-container">
-            {logo_html}
+            <div class="logo-box">
+                {logo_img_tag}
+            </div>
         </div>
     </div>
 """, unsafe_allow_html=True)
 
-# 3 Modules Cards Grid (As per provided Screenshot)
-st.markdown("""
-    <div class="modules-container">
-        <div class="module-card">
+# 3 MODULE CARDS GRID (USING STREAMLIT COLUMNS FOR GUARANTEED HORIZONTAL ALIGNMENT)
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    st.markdown("""
+        <div class="card-box">
             <div>
-                <div class="module-icon icon-blue">📊</div>
-                <div class="module-title">Requirement Sheet Engine</div>
-                <div class="module-desc">Multi-sheet BOQ Excel processing, automatic non-frosted glass extraction, SQFT auto-calculation, and official requirement sheet generation.</div>
+                <div class="card-icon icon-blue">📊</div>
+                <div class="card-title">Requirement Sheet Engine</div>
+                <div class="card-desc">Multi-sheet BOQ Excel processing, automatic non-frosted glass extraction, SQFT auto-calculation, and official requirement sheet generation.</div>
             </div>
-            <a href="#" class="module-link">Launch Module &rarr;</a>
+            <a href="#" class="card-link">Launch Module &rarr;</a>
         </div>
-        <div class="module-card">
+    """, unsafe_allow_html=True)
+
+with c2:
+    st.markdown("""
+        <div class="card-box">
             <div>
-                <div class="module-icon icon-green">🪟</div>
-                <div class="module-title">Window Details</div>
-                <div class="module-desc">Comprehensive window codes directory, profile specifications, hardware details, and component level breakdowns.</div>
+                <div class="card-icon icon-green">🪟</div>
+                <div class="card-title">Window Details</div>
+                <div class="card-desc">Comprehensive window codes directory, profile specifications, hardware details, and component level breakdowns.</div>
             </div>
-            <a href="#" class="module-link">Launch Module &rarr;</a>
+            <a href="#" class="card-link">Launch Module &rarr;</a>
         </div>
-        <div class="module-card">
+    """, unsafe_allow_html=True)
+
+with c3:
+    st.markdown("""
+        <div class="card-box">
             <div>
-                <div class="module-icon icon-purple">📄</div>
-                <div class="module-title">Glass & PI Verification</div>
-                <div class="module-desc">Glass Proforma Invoice verification, quantity cross-checks, rate validation system, and automated mismatch detection.</div>
+                <div class="card-icon icon-purple">📄</div>
+                <div class="card-title">Glass & PI Verification</div>
+                <div class="card-desc">Glass Proforma Invoice verification, quantity cross-checks, rate validation system, and automated mismatch detection.</div>
             </div>
-            <a href="#" class="module-link">Launch Module &rarr;</a>
+            <a href="#" class="card-link">Launch Module &rarr;</a>
         </div>
-    </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
 
 # Step 1 Section
 st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>', unsafe_allow_html=True)
@@ -553,7 +535,6 @@ uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="col
 
 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-# STRICT COMPACT COLUMN RATIO FOR BUTTONS TO SIT CLOSE TOGETHER
 btn_col1, btn_col2, _ = st.columns([1.1, 1.1, 8])
 
 with btn_col1:
@@ -583,7 +564,7 @@ if btn_process:
     else:
         st.warning("Please upload an Excel file first.")
 
-# Results Display & Requirement Sheet Dashboard
+# Results Display & Dashboard Analytics
 if st.session_state['df_result'] is not None:
     res_df = st.session_state['df_result']
     df_raw_c = st.session_state['df_raw_clean']
@@ -593,7 +574,6 @@ if st.session_state['df_result'] is not None:
     st.success(f"Successfully processed sheet: **'{used_sheet}'**")
 
     if not res_df.empty:
-        # Dashboard KPI Cards
         st.markdown('<div class="step-header">📊 Step 2: Windows Details Dashboard Analytics</div>', unsafe_allow_html=True)
         
         tot_types = len(res_df)
@@ -613,7 +593,6 @@ if st.session_state['df_result'] is not None:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # 3 VIEW TABS
         tab1, tab2, tab3 = st.tabs([
             "📄 Window Details Live Preview", 
             "📊 File / OC Summary", 
@@ -650,7 +629,6 @@ if st.session_state['df_result'] is not None:
             glass_summary.insert(0, "Sr. No.", range(1, len(glass_summary) + 1))
             st.dataframe(glass_summary, use_container_width=True, hide_index=True)
 
-        # Excel Download Functionality (Calibri / Blue Styling)
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "WINDOW DETAILS"
@@ -684,7 +662,6 @@ if st.session_state['df_result'] is not None:
                 cell.font = data_font
                 cell.border = thin_border
 
-        # Total Row
         tot_row_num = len(res_df) + 2
         ws.cell(row=tot_row_num, column=1, value="TOTAL").font = total_font
         ws.cell(row=tot_row_num, column=4, value=f"=SUM(D2:D{tot_row_num-1})").font = total_font
