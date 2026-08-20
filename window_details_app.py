@@ -40,7 +40,6 @@ def process_measurement_sheet(file_obj):
     # 2. Find actual data starting row (where S.NO / numbers start)
     start_row = 0
     for idx, row in df_raw.iterrows():
-        # Check if first/second column has numeric S.NO (e.g. 1, 2, 3...)
         val0 = str(row[0]).strip()
         val1 = str(row[1]).strip()
         if val0.isdigit() or val1.isdigit():
@@ -53,14 +52,14 @@ def process_measurement_sheet(file_obj):
     rows = []
     for _, row in df_data.iterrows():
         # Column mappings based on standard MEASUREMENT sheet layout
-        # Col 0: S.NO, Col 1: FLAT NO, Col 2: WINDOW TYPE, Col 3: LOCATION
+        # Col 2: WINDOW TYPE, Col 3: LOCATION
         # Col 5: Width, Col 6: Height, Col 7: Area Sq.Ft
         # Col 11: Glass / Flymesh Spec
         
         win_type = str(row[2]).strip() if pd.notna(row[2]) else ""
         location = str(row[3]).strip() if pd.notna(row[3]) else ""
         
-        # Combine Window Type + Location for unique identifier
+        # Combine Window Type + Location
         window_name = f"{win_type} ({location})" if location and location != "nan" else win_type
         if not window_name or window_name == "nan":
             continue
@@ -74,9 +73,19 @@ def process_measurement_sheet(file_obj):
         if pd.isna(sqft) or sqft <= 0:
             continue
 
-        # Rule for Special Glass: Check "frosted toughened" (Ignore plain frosted)
+        # RULE FOR SPECIAL GLASS:
+        # Include: Non-Frosted Toughened OR Frosted Toughened (any Toughened / DGU / Special Spec)
+        # Ignore: Only Plain Frosted (without Toughened)
         glass_lower = glass_spec.lower()
-        is_special = ("frosted" in glass_lower and "toughened" in glass_lower) or ("satin toughened" in glass_lower)
+        
+        if "frosted" in glass_lower and "toughened" not in glass_lower and "tough" not in glass_lower:
+            # Only plain frosted - ignore
+            is_special = False
+        elif "toughened" in glass_lower or "tough" in glass_lower or "dgu" in glass_lower or "satin" in glass_lower:
+            # Non-frosted toughened OR Frosted toughened
+            is_special = True
+        else:
+            is_special = False
 
         rows.append({
             'Window Code / Type': window_name,
