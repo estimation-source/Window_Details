@@ -253,6 +253,25 @@ st.markdown("""
         background-color: #f8fafc !important;
         color: #0f172a !important;
     }
+
+    /* Logo Card Layout matching WinSquare Original */
+    .sidebar-logo-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 24px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .sidebar-logo-img {
+        max-width: 130px;
+        height: auto;
+        display: block;
+        margin: 0 auto;
+    }
     
     /* Header Container */
     .header-card {
@@ -281,7 +300,7 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* Target Specific Buttons for Exact Color & Layout */
+    /* Target Specific Buttons */
     div.stButton > button {
         border-radius: 8px !important;
         padding: 10px 16px !important;
@@ -293,13 +312,6 @@ st.markdown("""
         transition: all 0.2s ease !important;
     }
 
-    /* Process Button styling (Blue) */
-    div.stButton > button[data-testid="baseButton-secondary"]:nth-of-type(1) {
-        background-color: #2563eb !important;
-        color: #ffffff !important;
-    }
-    
-    /* Custom Styling via Column Keys */
     .btn-blue > button {
         background-color: #2563eb !important;
         color: white !important;
@@ -324,10 +336,14 @@ if 'df_result' not in st.session_state:
 if 'sheet_used' not in st.session_state:
     st.session_state['sheet_used'] = None
 
-# Sidebar with Logo & Options
+# Sidebar with Centered Logo Card & Options
 with st.sidebar:
     if logo_b64:
-        st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="width:150px; margin-bottom: 24px; display:block;">', unsafe_allow_html=True)
+        st.markdown(f'''
+            <div class="sidebar-logo-card">
+                <img src="data:image/png;base64,{logo_b64}" class="sidebar-logo-img">
+            </div>
+        ''', unsafe_allow_html=True)
     
     st.markdown("#### ⚙️ Reading Mode Option")
     selected_mode = st.radio(
@@ -349,7 +365,7 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-# Button Layout Matching Dashboard (Tight columns next to each other)
+# Button Layout
 st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
 col_p, col_r, _ = st.columns([1.2, 1.2, 3.6])
 
