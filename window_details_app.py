@@ -21,164 +21,201 @@ def get_base64_image(image_path: str) -> str | None:
 
 logo_b64 = get_base64_image("logo.png")
 
-# Smart Block-Layout & Table Parser
-def process_excel_file(file_obj):
-    excel_file = pd.ExcelFile(file_obj)
-    sheet_names = excel_file.sheet_names
-    
-    # Target Sheet Selection
-    target_sheet = None
-    for s in sheet_names:
-        if "MEASUREMENT" in str(s).upper():
-            target_sheet = s
-            break
-    if not target_sheet:
-        target_sheet = sheet_names[1] if len(sheet_names) >= 2 else sheet_names[0]
+# Rule for Special Glass
+def check_special_glass(spec):
+    glass_lower = str(spec).lower()
+    if "frosted" in glass_lower and "toughened" not in glass_lower and "tough" not in glass_lower:
+        return False
+    elif "toughened" in glass_lower or "tough" in glass_lower or "dgu" in glass_lower or "satin" in glass_lower:
+        return True
+    return False
 
-    df_raw = pd.read_excel(file_obj, sheet_name=target_sheet, header=None)
-    full_text = " ".join([str(val) for val in df_raw.fillna('').values.flatten()]).upper()
-    
+# ===================================================================
+# OPTION 1: MEASUREMENT SHEET READER (HORIZONTAL TABLE FORMAT)
+# ===================================================================
+def parse_measurement_sheet(file_obj, sheet_name):
+    df_raw = pd.read_excel(file_obj, sheet_name=sheet_name, header=None)
+
+    # Find starting row where numeric data begins
+    start_row = 0
+    for idx, row in df_raw.iterrows():
+        val0 = str(row[0]).strip()
+        val1 = str(row[1]).strip()
+        if val0.isdigit() or val1.isdigit():
+            start_row = idx
+            break
+
+    df_data = df_raw.iloc[start_row:].copy().reset_index(drop=True)
     rows = []
 
-    # -------------------------------------------------------------------
-    # FORMAT A: VERTICAL BLOCK FORMAT (Quotation Sheets / Sheet2 Layout)
-    # -------------------------------------------------------------------
-    if "CODE :" in full_text or "CODE:" in full_text or ("WIDTH" in full_text and "SQFT" in full_text):
-        blocks = []
-        current_block = {}
+    for _, row in df_data.iterrows():
+        win_type = str(row[2]).strip() if pd.notna(row[2]) else ""
+        location = str(row[3]).strip() if pd.notna(row[3]) else ""
+        
+        window_name = f"{win_type} ({location})" if location and location != "nan" else win_type
+        if not window_name or window_name == "nan":
+            continue
 
-        for idx, row in df_raw.iterrows():
-            # Get non-empty values
-            row_vals = [str(val).strip() for val in row.values if pd.notna(val) and str(val).strip() != "nan" and str(val).strip() != ""]
-            row_str = " ".join(row_vals)
+        width = pd.to_numeric(row[5], errors='coerce')
+        height = pd.to_numeric(row[6], errors='coerce')
+        sqft = pd.to_numeric(row[7], errors='coerce')
+        thickness = str(row[10]).strip() if pd.notna(row[10]) and str(row[10]).strip() != "nan" else "-"
+        glass_spec = str(row[11]).strip() if pd.notna(row[11]) and str(row[11]).strip() != "nan" else ""
 
-            if not row_vals:
-                continue
+        if pd.isna(sqft) or sqft <= 0:
+            continue
 
-            # Detect New Window Block (CODE :)
-            if re.search(r'CODE\s*:', row_str, re.IGNORECASE):
-                if current_block.get('SQFT') or current_block.get('Code'):
-                    blocks.append(current_block)
-                current_block = {'Code': '', 'Name': '', 'Glass': '', 'Width': '-', 'Height': '-', 'Thickness': '-', 'SQFT': 0}
+        rows.append({
+            'Window Code / Type': window_name,
+            'Width (mm)': width if pd.notna(width) else "-",
+            'Height (mm)': height if pd.notna(height) else "-",
+            'Thickness': thickness,
+            'Glass Specification': glass_spec,
+            'SQFT': sqft
+        })
 
-                match = re.search(r'CODE\s*:\s*([A-Za-z0-9_\-]+)', row_str, re.IGNORECASE)
-                if match:
-                    current_block['Code'] = match.group(1).strip()
+    return rows
 
-            # Detect Name
-            if re.search(r'NAME\s*:', row_str, re.IGNORECASE):
-                match = re.search(r'NAME\s*:\s*(.*?)(?=Profile System|Size|Location|$)', row_str, re.IGNORECASE)
-                if match:
-                    current_block['Name'] = match.group(1).strip()
+# ===================================================================
+# OPTION 2: QUOTATION SHEET READER (VERTICAL BLOCK FORMAT - WinSquare)
+# ===================================================================
+def parse_quotation_block_sheet(file_obj, sheet_name):
+    df_raw = pd.read_excel(file_obj, sheet_name=sheet_name, header=None)
+    rows = []
 
-            # Detect Glass
-            if re.search(r'GLASS\s*:', row_str, re.IGNORECASE):
-                match = re.search(r'GLASS\s*:\s*(.*)', row_str, re.IGNORECASE)
-                if match:
-                    glass_val = match.group(1).strip()
-                    current_block['Glass'] = glass_val
-                    # Extract Thickness if specified (e.g. 20mm, 5mm)
-                    thick_match = re.search(r'(\d+\s*MM(?:\s*DGU)?)', glass_val, re.IGNORECASE)
-                    if thick_match:
-                        current_block['Thickness'] = thick_match.group(1).strip()
+    # Iterate cell matrix to extract structured block data
+    num_rows = len(df_raw)
+    for r in range(num_rows):
+        row_vals = [str(val).strip() for val in df_raw.iloc[r].values if pd.notna(val) and str(val).strip() != "nan"]
+        row_str = " ".join(row_vals)
 
-            # Detect Width, Height, SQFT line-by-line
-            for i, val in enumerate(row_vals):
-                val_u = val.upper()
-                if val_u == "WIDTH" or "WIDTH" in val_u:
-                    # Look ahead in same row for number
-                    nums = [re.sub(r'[^0-9.]', '', x) for x in row_vals[i+1:] if re.sub(r'[^0-9.]', '', x)]
-                    if nums:
-                        current_block['Width'] = pd.to_numeric(nums[0], errors='coerce')
-                
-                elif val_u == "HEIGHT" or "HEIGHT" in val_u:
-                    nums = [re.sub(r'[^0-9.]', '', x) for x in row_vals[i+1:] if re.sub(r'[^0-9.]', '', x)]
-                    if nums:
-                        current_block['Height'] = pd.to_numeric(nums[0], errors='coerce')
+        # Check if row has "Code :"
+        if "CODE :" in row_str.upper() or "CODE:" in row_str.upper():
+            code_val = ""
+            name_val = ""
+            glass_val = ""
+            width_val = "-"
+            height_val = "-"
+            sqft_val = 0
+            thick_val = "-"
 
-                elif val_u == "SQFT" or "SQFT" in val_u:
-                    nums = [re.sub(r'[^0-9.]', '', x) for x in row_vals[i+1:] if re.sub(r'[^0-9.]', '', x)]
-                    if nums:
-                        sq_val = pd.to_numeric(nums[0], errors='coerce')
-                        if pd.notna(sq_val):
-                            current_block['SQFT'] = sq_val
+            # Extract Code
+            code_match = re.search(r'CODE\s*:\s*([A-Za-z0-9_\-]+)', row_str, re.IGNORECASE)
+            if code_match:
+                code_val = code_match.group(1).strip()
 
-        if current_block.get('SQFT') or current_block.get('Code'):
-            blocks.append(current_block)
+            # Scan surrounding 25 rows for Name, Glass, Width, Height, Sqft
+            for r_offset in range(r, min(r + 25, num_rows)):
+                sub_row = df_raw.iloc[r_offset]
+                sub_vals = [str(v).strip() for v in sub_row.values if pd.notna(v) and str(v).strip() != "nan"]
+                sub_str = " ".join(sub_vals)
 
-        # Map blocks to output table structure
-        for b in blocks:
-            code_name = b.get('Code', '')
-            if b.get('Name'):
-                code_name = f"{code_name} - {b['Name']}" if code_name else b['Name']
+                # Name
+                if ("NAME :" in sub_str.upper() or "NAME:" in sub_str.upper()) and not name_val:
+                    m = re.search(r'NAME\s*:\s*(.*?)(?=Profile System|Size|Location|$)', sub_str, re.IGNORECASE)
+                    if m:
+                        name_val = m.group(1).strip()
+
+                # Glass
+                if ("GLASS :" in sub_str.upper() or "GLASS:" in sub_str.upper()) and not glass_val:
+                    m = re.search(r'GLASS\s*:\s*(.*)', sub_str, re.IGNORECASE)
+                    if m:
+                        glass_val = m.group(1).strip()
+                        # Extract Thickness (e.g., 5mm, 20mm DGU)
+                        tm = re.search(r'(\d+\s*MM(?:\s*DGU)?)', glass_val, re.IGNORECASE)
+                        if tm:
+                            thick_val = tm.group(1).strip()
+
+                # Width, Height, SQFT (Reading numbers from adjacent cells)
+                for c in range(len(sub_row)):
+                    cell_val = str(sub_row[c]).strip().upper()
+                    if cell_val == "WIDHT" or cell_val == "WIDTH":
+                        # Fetch numeric value from same row ahead
+                        for c_next in range(c + 1, len(sub_row)):
+                            num = pd.to_numeric(sub_row[c_next], errors='coerce')
+                            if pd.notna(num) and num > 0:
+                                width_val = num
+                                break
+
+                    elif cell_val == "HEIGHT":
+                        for c_next in range(c + 1, len(sub_row)):
+                            num = pd.to_numeric(sub_row[c_next], errors='coerce')
+                            if pd.notna(num) and num > 0:
+                                height_val = num
+                                break
+
+                    elif cell_val == "SQFT":
+                        for c_next in range(c + 1, len(sub_row)):
+                            num = pd.to_numeric(sub_row[c_next], errors='coerce')
+                            if pd.notna(num) and num > 0:
+                                sqft_val = num
+                                break
+
+            # Format Name
+            full_name = f"{code_val} - {name_val}" if code_val and name_val else (code_val or name_val or "Window Block")
             
-            sqft_val = b.get('SQFT', 0)
             if sqft_val > 0:
                 rows.append({
-                    'Window Code / Type': code_name if code_name else "Window",
-                    'Width (mm)': b.get('Width', '-'),
-                    'Height (mm)': b.get('Height', '-'),
-                    'Thickness': b.get('Thickness', '-'),
-                    'Glass Specification': b.get('Glass', ''),
+                    'Window Code / Type': full_name,
+                    'Width (mm)': width_val,
+                    'Height (mm)': height_val,
+                    'Thickness': thick_val,
+                    'Glass Specification': glass_val,
                     'SQFT': sqft_val
                 })
 
-    # -------------------------------------------------------------------
-    # FORMAT B: HORIZONTAL TABLE FORMAT (Measurement Sheet Layout)
-    # -------------------------------------------------------------------
-    if not rows:
-        start_row = 0
-        for idx, row in df_raw.iterrows():
-            val0 = str(row[0]).strip()
-            val1 = str(row[1]).strip()
-            if val0.isdigit() or val1.isdigit():
-                start_row = idx
+    return rows
+
+# ===================================================================
+# MAIN PROCESSOR WITH DUAL OPTIONS
+# ===================================================================
+def process_excel_with_mode(file_obj, format_mode):
+    excel_file = pd.ExcelFile(file_obj)
+    sheet_names = excel_file.sheet_names
+
+    # Auto sheet selection
+    target_sheet = None
+    if format_mode == "Option 1: Measurement Table":
+        for s in sheet_names:
+            if "MEASUREMENT" in str(s).upper():
+                target_sheet = s
                 break
+        if not target_sheet:
+            target_sheet = sheet_names[0]
+        parsed_rows = parse_measurement_sheet(file_obj, target_sheet)
 
-        df_data = df_raw.iloc[start_row:].copy().reset_index(drop=True)
+    elif format_mode == "Option 2: Quotation Block Layout":
+        for s in sheet_names:
+            if "SHEET2" in str(s).upper() or "QUOTE" in str(s).upper():
+                target_sheet = s
+                break
+        if not target_sheet:
+            target_sheet = sheet_names[1] if len(sheet_names) >= 2 else sheet_names[0]
+        parsed_rows = parse_quotation_block_sheet(file_obj, target_sheet)
 
-        for _, row in df_data.iterrows():
-            win_type = str(row[2]).strip() if pd.notna(row[2]) else ""
-            location = str(row[3]).strip() if pd.notna(row[3]) else ""
-            
-            window_name = f"{win_type} ({location})" if location and location != "nan" else win_type
-            if not window_name or window_name == "nan":
-                continue
+    else:  # AUTO-DETECT MODE
+        full_text_sheet1 = " ".join([str(v) for v in pd.read_excel(file_obj, sheet_name=sheet_names[0], header=None).fillna('').values.flatten()]).upper()
+        
+        if "CODE :" in full_text_sheet1 or "CODE:" in full_text_sheet1 or "WIDHT" in full_text_sheet1:
+            target_sheet = sheet_names[0]
+            parsed_rows = parse_quotation_block_sheet(file_obj, target_sheet)
+        else:
+            target_sheet = None
+            for s in sheet_names:
+                if "MEASUREMENT" in str(s).upper():
+                    target_sheet = s
+                    break
+            if not target_sheet:
+                target_sheet = sheet_names[0]
+            parsed_rows = parse_measurement_sheet(file_obj, target_sheet)
 
-            width = pd.to_numeric(row[5], errors='coerce')
-            height = pd.to_numeric(row[6], errors='coerce')
-            sqft = pd.to_numeric(row[7], errors='coerce')
-            thickness = str(row[10]).strip() if pd.notna(row[10]) and str(row[10]).strip() != "nan" else "-"
-            glass_spec = str(row[11]).strip() if pd.notna(row[11]) and str(row[11]).strip() != "nan" else ""
-
-            if pd.isna(sqft) or sqft <= 0:
-                continue
-
-            rows.append({
-                'Window Code / Type': window_name,
-                'Width (mm)': width if pd.notna(width) else "-",
-                'Height (mm)': height if pd.notna(height) else "-",
-                'Thickness': thickness,
-                'Glass Specification': glass_spec,
-                'SQFT': sqft
-            })
-
-    # Final DataFrame Processing
-    df_clean = pd.DataFrame(rows)
+    df_clean = pd.DataFrame(parsed_rows)
     if df_clean.empty:
         return pd.DataFrame(), target_sheet
 
-    # Glass Classification Rule
-    def check_special_glass(spec):
-        glass_lower = str(spec).lower()
-        if "frosted" in glass_lower and "toughened" not in glass_lower and "tough" not in glass_lower:
-            return False
-        elif "toughened" in glass_lower or "tough" in glass_lower or "dgu" in glass_lower or "satin" in glass_lower:
-            return True
-        return False
-
     df_clean['Is_Special'] = df_clean['Glass Specification'].apply(check_special_glass)
 
+    # Grouping
     summary = []
     for win_code, group in df_clean.groupby('Window Code / Type'):
         all_sqft = group['SQFT'].sum()
@@ -206,6 +243,7 @@ def process_excel_file(file_obj):
 
     return pd.DataFrame(summary), target_sheet
 
+
 # Custom UI CSS
 st.markdown("""
     <style>
@@ -227,29 +265,36 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Sidebar
+# Sidebar Options
 with st.sidebar:
     if logo_b64:
         st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="width:140px;">', unsafe_allow_html=True)
     st.markdown("### 🪟 Window Details Module")
-    st.caption("Auto-supports Horizontal Tables & Vertical Block Quotation Layouts.")
+    
+    st.markdown("---")
+    st.markdown("#### ⚙️ Reading Mode Option")
+    selected_mode = st.radio(
+        "Select Sheet Format Reader:",
+        ["Auto-Detect Format", "Option 1: Measurement Table", "Option 2: Quotation Block Layout"],
+        help="Choose Option 1 for MEASUREMENT horizontal table sheet, Option 2 for WinSquare Quotation block sheet."
+    )
 
 # Header
 st.markdown("""
     <div class="header-container">
-        <div class="main-title">Universal Window Details & Glass SQFT Engine</div>
-        <div class="main-subtitle">Supports Measurement Sheets, Quotation Sheets & Block Layouts</div>
+        <div class="main-title">Multi-Format Window Details Engine</div>
+        <div class="main-subtitle">Select Reader Option for Measurement Table OR Quotation Block Sheets</div>
     </div>
 """, unsafe_allow_html=True)
 
 # File Upload
-uploaded_file = st.file_uploader("Upload Excel BOQ File", type=["xlsx", "xls"])
+uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx", "xls"])
 
 if uploaded_file:
     try:
-        result_df, sheet_used = process_excel_file(uploaded_file)
+        result_df, sheet_used = process_excel_with_mode(uploaded_file, selected_mode)
         
-        st.success(f"Successfully processed sheet: **'{sheet_used}'**")
+        st.success(f"Mode Selected: **{selected_mode}** | Processed Sheet: **'{sheet_used}'**")
         
         if not result_df.empty:
             st.markdown("### 📑 Window Details Output Table")
@@ -269,7 +314,7 @@ if uploaded_file:
             with c3:
                 st.metric("Total Special Glass SQFT", f"{tot_spec:,.2f} sqft")
         else:
-            st.warning("No valid measurement rows found in the sheet. Please check the Excel file.")
+            st.warning("No valid window rows found in the sheet. Try changing the Reading Mode option from sidebar.")
 
     except Exception as e:
         st.error(f"Error parsing sheet: {str(e)}")
