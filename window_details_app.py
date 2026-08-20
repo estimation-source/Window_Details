@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import base64
 import pandas as pd
 from PIL import Image
 import streamlit as st
@@ -237,7 +236,7 @@ def process_excel_with_mode(file_obj, format_mode):
     return pd.DataFrame(summary), target_sheet
 
 
-# EXACT GLOBAL CSS OVERRIDE (EXACT MATCHING BUTTON STYLING & SPACING)
+# EXACT GLOBAL CSS OVERRIDE WITH DIRECT STREAMLIT BUTTON TARGETING
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -286,14 +285,8 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* BUTTON WRAPPERS & CONTAINER SPACING */
-    [data-testid="column"] {
-        padding-right: 0px !important;
-        padding-left: 0px !important;
-    }
-    
-    /* Blue Process Button */
-    div.btn-blue button {
+    /* DIRECT TARGETING FOR STREAMLIT BUTTONS */
+    div[data-testid="stColumn"]:nth-of-type(1) div.stButton > button {
         background-color: #2563eb !important;
         color: #ffffff !important;
         border-radius: 8px !important;
@@ -303,14 +296,12 @@ st.markdown("""
         border: none !important;
         width: 100% !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-        transition: background-color 0.2s ease;
     }
-    div.btn-blue button:hover {
+    div[data-testid="stColumn"]:nth-of-type(1) div.stButton > button:hover {
         background-color: #1d4ed8 !important;
     }
 
-    /* Red Reset Button */
-    div.btn-red button {
+    div[data-testid="stColumn"]:nth-of-type(2) div.stButton > button {
         background-color: #dc2626 !important;
         color: #ffffff !important;
         border-radius: 8px !important;
@@ -320,14 +311,13 @@ st.markdown("""
         border: none !important;
         width: 100% !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-        transition: background-color 0.2s ease;
     }
-    div.btn-red button:hover {
+    div[data-testid="stColumn"]:nth-of-type(2) div.stButton > button:hover {
         background-color: #b91c1c !important;
     }
 
-    /* White Icons/Text inside Buttons */
-    div.btn-blue button *, div.btn-red button * {
+    /* Force text and icons inside button to be white */
+    div.stButton > button * {
         color: #ffffff !important;
     }
     </style>
@@ -373,21 +363,16 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-# Buttons Row with EXACT gap and width matching original layout
-st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+# Buttons Row with EXACT spacing and layout match
+st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
-# Columns with gap='small' ensuring precise gap between blue and red buttons
-btn_col1, btn_col2, _ = st.columns([2.2, 2.2, 5.6], gap="small")
+btn_col1, btn_col2, _ = st.columns([2.5, 2.5, 5], gap="small")
 
 with btn_col1:
-    st.markdown('<div class="btn-blue">', unsafe_allow_html=True)
-    btn_process = st.button("🔗 Process Sheet", key="btn_process_sheet")
-    st.markdown('</div>', unsafe_allow_html=True)
+    btn_process = st.button("🔗 Process Sheet", key="btn_process_sheet", use_container_width=True)
 
 with btn_col2:
-    st.markdown('<div class="btn-red">', unsafe_allow_html=True)
-    btn_reset = st.button("🗑️ Reset Data", key="btn_reset_sheet")
-    st.markdown('</div>', unsafe_allow_html=True)
+    btn_reset = st.button("🗑️ Reset Data", key="btn_reset_sheet", use_container_width=True)
 
 # Reset Logic
 if btn_reset:
