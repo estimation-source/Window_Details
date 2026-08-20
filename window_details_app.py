@@ -309,21 +309,6 @@ st.markdown("""
         margin-top: 6px;
     }
 
-    /* INLINE BUTTONS FLEX CONTAINER (12px GAP) */
-    div[data-testid="stHorizontalBlock"]:has(div.stButton) {
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: flex-start !important;
-        align-items: center !important;
-        gap: 12px !important;
-    }
-
-    div[data-testid="stHorizontalBlock"]:has(div.stButton) > div[data-testid="column"] {
-        width: auto !important;
-        flex: none !important;
-        min-width: unset !important;
-    }
-
     /* FORCE BLUE BUTTON (PRIMARY TYPE) */
     .stButton > button[kind="primary"] {
         background-color: #2563eb !important;
@@ -334,6 +319,7 @@ st.markdown("""
         height: 38px !important;
         padding: 0 16px !important;
         box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2) !important;
+        white-space: nowrap !important;
     }
     .stButton > button[kind="primary"]:hover {
         background-color: #1d4ed8 !important;
@@ -350,6 +336,7 @@ st.markdown("""
         height: 38px !important;
         padding: 0 16px !important;
         box-shadow: 0 1px 2px rgba(220, 38, 38, 0.2) !important;
+        white-space: nowrap !important;
     }
     .stButton > button[kind="secondary"]:hover {
         background-color: #b91c1c !important;
@@ -423,14 +410,14 @@ uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="col
 
 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-# BUTTONS CONTAINER (CLOSE GAP - FLEXBOX)
-btn_col1, btn_col2 = st.columns(2)
+# STRICT COMPACT COLUMN RATIO FOR BUTTONS TO SIT CLOSE TOGETHER
+btn_col1, btn_col2, _ = st.columns([1.1, 1.1, 8])
 
 with btn_col1:
-    btn_process = st.button("🔗 Process Sheet", type="primary", use_container_width=False)
+    btn_process = st.button("🔗 Process Sheet", type="primary", use_container_width=True)
 
 with btn_col2:
-    btn_reset = st.button("🗑️ Reset Data", type="secondary", use_container_width=False)
+    btn_reset = st.button("🗑️ Reset Data", type="secondary", use_container_width=True)
 
 # Reset Logic
 if btn_reset:
