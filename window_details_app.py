@@ -12,15 +12,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Helper Function: Base64 Logo (Reads logo.png from current directory)
-def get_base64_image(image_path: str) -> str | None:
-    if os.path.exists(image_path):
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    return None
-
-logo_b64 = get_base64_image("logo.png")
-
 # Rule for Special Glass
 def check_special_glass(spec):
     glass_lower = str(spec).lower()
@@ -237,7 +228,7 @@ def process_excel_with_mode(file_obj, format_mode):
     return pd.DataFrame(summary), target_sheet
 
 
-# EXACT ORIGINAL UI CSS OVERRIDE
+# EXACT GLOBAL DASHBOARD CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -248,26 +239,14 @@ st.markdown("""
         color: #0f172a !important;
     }
 
-    /* Logo Card Layout matching WinSquare Original */
-    .sidebar-logo-card {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 12px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-bottom: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-    }
-    .sidebar-logo-img {
-        max-width: 120px;
-        height: auto;
-        display: block;
-        margin: 0 auto;
+    /* Sidebar Divider Line */
+    [data-testid="stSidebar"] hr {
+        margin-top: 1rem !important;
+        margin-bottom: 1.5rem !important;
+        border-color: #e2e8f0 !important;
     }
     
-    /* Header Container */
+    /* Header Card */
     .header-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -294,39 +273,39 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* FORCE FULL-WIDTH SOLID BUTTON STYLING */
-    div[data-testid="column"] button {
-        width: 100% !important;
-        height: 44px !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
-        font-size: 14px !important;
-        border: none !important;
-        cursor: pointer !important;
-        box-shadow: none !important;
-    }
-
-    /* Blue Process Button */
+    /* SOLID BUTTONS MATCHING ORIGINAL MODULE */
     div.btn-blue button {
         background-color: #2563eb !important;
         color: #ffffff !important;
+        border-radius: 8px !important;
+        height: 42px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        border: none !important;
+        width: 100% !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
     }
     div.btn-blue button:hover {
         background-color: #1d4ed8 !important;
     }
-    div.btn-blue button * {
-        color: #ffffff !important;
-    }
 
-    /* Red Reset Button */
     div.btn-red button {
         background-color: #dc2626 !important;
         color: #ffffff !important;
+        border-radius: 8px !important;
+        height: 42px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        border: none !important;
+        width: 100% !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
     }
     div.btn-red button:hover {
         background-color: #b91c1c !important;
     }
-    div.btn-red button * {
+
+    /* Force text/icons inside buttons to stay white */
+    div.btn-blue button *, div.btn-red button * {
         color: #ffffff !important;
     }
     </style>
@@ -338,14 +317,12 @@ if 'df_result' not in st.session_state:
 if 'sheet_used' not in st.session_state:
     st.session_state['sheet_used'] = None
 
-# Sidebar with Centered Logo Card & Options
+# Sidebar Matching Module 1 & 2 Layout Exactly
 with st.sidebar:
-    if logo_b64:
-        st.markdown(f'''
-            <div class="sidebar-logo-card">
-                <img src="data:image/png;base64,{logo_b64}" class="sidebar-logo-img">
-            </div>
-        ''', unsafe_allow_html=True)
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=170)
+    
+    st.markdown("---")  # Horizontal Line matching original theme
     
     st.markdown("#### ⚙️ Reading Mode Option")
     selected_mode = st.radio(
@@ -367,9 +344,9 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-# Button Layout Matching Original Dashboard Spacing
-st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
-col_p, col_r, _ = st.columns([2.2, 2.2, 3.6])
+# Buttons Row - Width & Color Match Original
+st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+col_p, col_r, _ = st.columns([2, 2, 4])
 
 with col_p:
     st.markdown('<div class="btn-blue">', unsafe_allow_html=True)
