@@ -564,12 +564,12 @@ if st.session_state['df_result'] is not None:
         excel_bytes = output.getvalue()
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.download_button(
-            label="📥 DOWNLOAD WINDOW DETAILS SHEET (.XLSX)",
-            data=excel_bytes,
-            file_name="WINDOW_DETAILS_SUMMARY.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=False
-        )
+        #st.download_button(
+        #    label="📥 DOWNLOAD WINDOW DETAILS SHEET (.XLSX)",
+        #    data=excel_bytes,
+        #    file_name="WINDOW_DETAILS_SUMMARY.xlsx",
+        #    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        #    use_container_width=False
+        #)
     else:
         st.warning("No valid window rows found in the sheet. Please check the selected Reading Mode Option in sidebar.")
