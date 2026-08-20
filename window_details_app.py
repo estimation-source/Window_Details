@@ -10,7 +10,7 @@ import streamlit as st
 # 1. Page Config
 # ============================================================
 st.set_page_config(
-    page_title="Universal Window Details & Glass SQFT Engine",
+    page_title="Universal Window Details",
     page_icon="🪟",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -279,45 +279,48 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* CUSTOM STYLING FOR PROCESS SHEET BUTTON (BLUE) */
-    div.stButton > button#blue_process_btn {
+    /* SOLID BLUE BUTTON FOR PROCESS SHEET */
+    div.stButton > button[key="blue_process_btn"],
+    div[data-testid="column"]:nth-of-type(1) div.stButton > button {
         background-color: #2563eb !important;
         background: #2563eb !important;
-        color: #ffffff !important;
+        border: 1px solid #2563eb !important;
         border-radius: 8px !important;
-        height: 42px !important;
-        font-size: 14px !important;
-        font-weight: 600 !important;
-        border: none !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        height: 44px !important;
+        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2) !important;
     }
-    div.stButton > button#blue_process_btn:hover {
+    div.stButton > button[key="blue_process_btn"]:hover,
+    div[data-testid="column"]:nth-of-type(1) div.stButton > button:hover {
         background-color: #1d4ed8 !important;
         background: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
     }
 
-    /* CUSTOM STYLING FOR RESET DATA BUTTON (RED) */
-    div.stButton > button#red_reset_btn {
+    /* SOLID RED BUTTON FOR RESET DATA */
+    div.stButton > button[key="red_reset_btn"],
+    div[data-testid="column"]:nth-of-type(2) div.stButton > button {
         background-color: #dc2626 !important;
         background: #dc2626 !important;
-        color: #ffffff !important;
+        border: 1px solid #dc2626 !important;
         border-radius: 8px !important;
-        height: 42px !important;
-        font-size: 14px !important;
-        font-weight: 600 !important;
-        border: none !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        height: 44px !important;
+        box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2) !important;
     }
-    div.stButton > button#red_reset_btn:hover {
+    div.stButton > button[key="red_reset_btn"]:hover,
+    div[data-testid="column"]:nth-of-type(2) div.stButton > button:hover {
         background-color: #b91c1c !important;
         background: #b91c1c !important;
+        border-color: #b91c1c !important;
     }
 
-    /* FORCE ALL TEXT IN THESE BUTTONS TO STAY WHITE */
-    div.stButton > button#blue_process_btn *,
-    div.stButton > button#red_reset_btn * {
+    /* FORCE BOLD & WHITE TEXT FOR BOTH BUTTONS */
+    div[data-testid="column"] div.stButton > button p,
+    div[data-testid="column"] div.stButton > button span,
+    div[data-testid="column"] div.stButton > button div {
         color: #ffffff !important;
-        font-weight: 600 !important;
+        font-weight: 800 !important;
+        font-size: 15px !important;
+        letter-spacing: 0.3px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -362,10 +365,8 @@ uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="col
 
 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-# ===================================================================
-# NO FORM CONTAINER! DIRECT COLUMNS & CLEAN BUTTONS
-# ===================================================================
-btn_col1, btn_col2, _ = st.columns([2.2, 2.2, 5.6])
+# DIRECT COLUMNS FOR BUTTONS (NO FORM)
+btn_col1, btn_col2, _ = st.columns([2.5, 2.5, 5])
 
 with btn_col1:
     btn_process = st.button("🔗 Process Sheet", key="blue_process_btn", use_container_width=True)
