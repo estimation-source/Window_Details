@@ -236,7 +236,7 @@ def process_excel_with_mode(file_obj, format_mode):
     return pd.DataFrame(summary), target_sheet
 
 
-# GLOBAL BASE STYLING
+# PAGE AND ELEMENT STYLING
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -284,10 +284,52 @@ st.markdown("""
         color: #1e293b;
         margin-bottom: 12px;
     }
+
+    /* DIRECT OVERRIDE FOR ALL STREAMLIT BUTTONS IN MAIN CONTENT */
+    div[data-testid="stColumn"]:nth-of-type(1) button[kind="secondary"] {
+        background-color: #2563eb !important;
+        background: #2563eb !important;
+        border: 1px solid #2563eb !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+        height: 42px !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+    }
+    div[data-testid="stColumn"]:nth-of-type(1) button[kind="secondary"]:hover {
+        background-color: #1d4ed8 !important;
+        background: #1d4ed8 !important;
+        border-color: #1d4ed8 !important;
+    }
+
+    div[data-testid="stColumn"]:nth-of-type(2) button[kind="secondary"] {
+        background-color: #dc2626 !important;
+        background: #dc2626 !important;
+        border: 1px solid #dc2626 !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+        height: 42px !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+    }
+    div[data-testid="stColumn"]:nth-of-type(2) button[kind="secondary"]:hover {
+        background-color: #b91c1c !important;
+        background: #b91c1c !important;
+        border-color: #b91c1c !important;
+    }
+
+    /* Ensure text inside button stays white and bold */
+    div[data-testid="stColumn"] button p {
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# Session State
+# Session State Initializations
 if 'df_result' not in st.session_state:
     st.session_state['df_result'] = None
 if 'sheet_used' not in st.session_state:
@@ -325,84 +367,16 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-# =========================================================
-# HARDCODED HTML/CSS BUTTONS (NO DEPENDENCY ON STREAMLIT BUTTON STYLES)
-# =========================================================
-st.markdown("""
-    <style>
-    .btn-container {
-        display: flex;
-        gap: 12px;
-        margin-top: 12px;
-        margin-bottom: 20px;
-    }
-    .custom-btn {
-        height: 42px;
-        padding: 0px 24px;
-        border-radius: 8px;
-        font-family: 'Plus Jakarta Sans', sans-serif;
-        font-size: 14px;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        transition: all 0.2s ease-in-out;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    }
-    .btn-blue {
-        background-color: #2563eb !important;
-        color: #ffffff !important;
-    }
-    .btn-blue:hover {
-        background-color: #1d4ed8 !important;
-    }
-    .btn-red {
-        background-color: #dc2626 !important;
-        color: #ffffff !important;
-    }
-    .btn-red:hover {
-        background-color: #b91c1c !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
-# Hidden State Handler Form
-with st.form("action_form", clear_on_submit=False):
-    col_b1, col_b2, _ = st.columns([2.5, 2.5, 5])
-    with col_b1:
-        btn_process = st.form_submit_button("🔗 Process Sheet", use_container_width=True, type="primary")
-    with col_b2:
-        btn_reset = st.form_submit_button("🗑️ Reset Data", use_container_width=True, type="secondary")
+# BUTTONS LAYOUT
+btn_col1, btn_col2, _ = st.columns([2.5, 2.5, 5])
 
-# STREAMLIT INJECTED BUTTON OVERRIDE FOR FORM
-st.markdown("""
-    <style>
-    div[data-testid="stFormSubmitButton"] > button[kind="primary"] {
-        background-color: #2563eb !important;
-        background: #2563eb !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 8px !important;
-        height: 42px !important;
-        font-weight: 600 !important;
-    }
-    div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {
-        background-color: #dc2626 !important;
-        background: #dc2626 !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 8px !important;
-        height: 42px !important;
-        font-weight: 600 !important;
-    }
-    div[data-testid="stFormSubmitButton"] > button * {
-        color: #ffffff !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+with btn_col1:
+    btn_process = st.button("🔗 Process Sheet", key="btn_blue_proc", use_container_width=True)
+
+with btn_col2:
+    btn_reset = st.button("🗑️ Reset Data", key="btn_red_res", use_container_width=True)
 
 # Reset Logic
 if btn_reset:
