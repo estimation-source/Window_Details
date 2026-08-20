@@ -21,15 +21,15 @@ def get_base64_image(image_path: str) -> str | None:
 
 logo_b64 = get_base64_image("logo.png")
 
-# Smart Multi-Format Parser
+# Smart Multi-Format Parser (Bug-Free)
 def process_excel_file(file_obj):
     excel_file = pd.ExcelFile(file_obj)
     sheet_names = excel_file.sheet_names
     
-    # 1. Choose Best Sheet
+    # 1. Target Sheet Selection
     target_sheet = None
     for s in sheet_names:
-        if "MEASUREMENT" in s.upper():
+        if "MEASUREMENT" in str(s).upper():
             target_sheet = s
             break
     if not target_sheet:
@@ -37,15 +37,15 @@ def process_excel_file(file_obj):
 
     df_raw = pd.read_excel(file_obj, sheet_name=target_sheet, header=None)
 
-    # Check if this sheet is Horizontal Table or Vertical Block Format
-    full_text = " ".join(df_raw.astype(str).values.flatten()).upper()
+    # Convert all values safely to string for text searching
+    full_text = " ".join([str(val) for val in df_raw.fillna('').values.flatten()]).upper()
     
     rows = []
 
     # -------------------------------------------------------------------
-    # FORMAT A: VERTICAL BLOCK FORMAT (Quotaion Layout like Sheet2 / WinSquare)
+    # FORMAT A: VERTICAL BLOCK FORMAT (Sheet2 / WinSquare Quotation Layout)
     # -------------------------------------------------------------------
-    if "CODE :" in full_text or "WIDTH" in full_text and "SQFT" in full_text:
+    if "CODE :" in full_text or "CODE:" in full_text or ("WIDTH" in full_text and "SQFT" in full_text):
         current_block = {}
         
         for idx, row in df_raw.iterrows():
@@ -56,9 +56,15 @@ def process_excel_file(file_obj):
             if "CODE :" in row_str.upper() or "CODE:" in row_str.upper():
                 if current_block.get('SQFT'):
                     rows.append(current_block)
-                current_block = {'Window Code / Type': '', 'Width (mm)': '-', 'Height (mm)': '-', 'Thickness': '-', 'Glass Specification': '', 'SQFT': 0}
+                current_block = {
+                    'Window Code / Type': '',
+                    'Width (mm)': '-',
+                    'Height (mm)': '-',
+                    'Thickness': '-',
+                    'Glass Specification': '',
+                    'SQFT': 0
+                }
                 
-                # Extract Code
                 match = re.search(r'CODE\s*:\s*([A-Za-z0-9_\-]+)', row_str, re.IGNORECASE)
                 if match:
                     current_block['Window Code / Type'] = match.group(1)
@@ -80,7 +86,7 @@ def process_excel_file(file_obj):
 
             # Detect Width, Height, SQFT
             for i, val in enumerate(row_vals):
-                val_upper = val.upper()
+                val_upper = str(val).upper()
                 if "WIDTH" in val_upper and i + 1 < len(row_vals):
                     current_block['Width (mm)'] = pd.to_numeric(row_vals[i+1], errors='coerce')
                 elif "HEIGHT" in val_upper and i + 1 < len(row_vals):
@@ -156,16 +162,21 @@ def process_excel_file(file_obj):
         
         sample_w = group['Width (mm)'].iloc[0]
         sample_h = group['Height (mm)'].iloc[0]
-        thick_type = ", ".join([t for t in group['Thickness'].unique() if t and t != "-"] ) if 'Thickness' in group.columns else "-"
-        glass_type = ", ".join([g for g in group['Glass Specification'].unique() if g])
+        
+        # Safe string joining for thickness & glass specs
+        thick_vals = [str(t) for t in group['Thickness'].unique() if str(t).strip() not in ["", "-", "nan"]]
+        thick_type = ", ".join(thick_vals) if thick_vals else "-"
+        
+        glass_vals = [str(g) for g in group['Glass Specification'].unique() if str(g).strip() not in ["", "nan"]]
+        glass_type = ", ".join(glass_vals) if glass_vals else "Standard Glass"
 
         summary.append({
-            'Window Code / Type': win_code,
+            'Window Code / Type': str(win_code),
             'Width (mm)': sample_w,
             'Height (mm)': sample_h,
             'Qty': len(group),
-            'Thickness': thick_type if thick_type else "-",
-            'Glass Specification': glass_type if glass_type else "Standard Glass",
+            'Thickness': thick_type,
+            'Glass Specification': glass_type,
             'ALL Window SQFT': round(all_sqft, 2),
             'Special glass SQFT': round(special_sqft, 2)
         })
