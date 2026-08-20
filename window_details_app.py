@@ -1,10 +1,9 @@
 import os
-import sys
 import base64
 import pandas as pd
 import streamlit as st
 
-# Page Configuration
+# Page Config
 st.set_page_config(
     page_title="Window Details | Glass Calculator",
     page_icon="🪟",
@@ -12,9 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
+# Helper Function: Base64 Logo
 def get_base64_image(image_path: str) -> str | None:
     if os.path.exists(image_path):
         with open(image_path, "rb") as img_file:
@@ -23,215 +20,176 @@ def get_base64_image(image_path: str) -> str | None:
 
 logo_b64 = get_base64_image("logo.png")
 
-def calculate_window_sqft(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Window Code/Name प्रमाणे Total Sqft, Frosted Sqft आणि Non-Frosted Sqft कॅल्क्युलेट करतो.
-    """
-    col_map = {}
+# Data Processing Function
+def process_measurement_sheet(file_obj) -> pd.DataFrame:
+    # 1. Excel शीट लोड करा आणि 'MEASUREMENT' किंवा 2nd sheet शोधा
+    excel_file = pd.ExcelFile(file_obj)
+    sheet_names = excel_file.sheet_names
+    
+    target_sheet = None
+    for s in sheet_names:
+        if "MEASUREMENT" in s.upper():
+            target_sheet = s
+            break
+    
+    if not target_sheet:
+        if len(sheet_names) >= 2:
+            target_sheet = sheet_names[1]  # 2nd Sheet
+        else:
+            target_sheet = sheet_names[0]
+
+    # Read sheet without strictly enforcing single header
+    df_raw = pd.read_excel(file_obj, sheet_name=target_sheet)
+
+    # Clean Multi-level or Merged Headers
+    # Find the header row where "WINDOW" or "PROFILE" or "SL.NO" exists
+    header_idx = 0
+    for idx, row in df_raw.head(10).iterrows():
+        row_str = " ".join([str(val).upper() for val in row.values])
+        if "WINDOW" in row_str or "AREA" in row_str or "WIDTH" in row_str:
+            header_idx = idx
+            break
+
+    df = pd.read_excel(file_obj, sheet_name=target_sheet, header=header_idx)
+    
+    # Clean Column Names
+    df.columns = [str(c).replace('\n', ' ').strip() for c in df.columns]
+
+    # Map necessary columns dynamically
+    win_col = None
+    width_col = None
+    height_col = None
+    sqft_col = None
+    glass_col = None
+    qty_col = None
+
     for col in df.columns:
-        c_lower = str(col).strip().lower()
-        if any(k in c_lower for k in ["window", "tag", "item", "code", "win"]):
-            col_map['window'] = col
-        elif any(k in c_lower for k in ["sqft", "area", "sq.ft", "sq ft"]):
-            col_map['sqft'] = col
-        elif any(k in c_lower for k in ["spec", "glass", "description", "type", "frosted"]):
-            col_map['spec'] = col
+        c_upper = col.upper()
+        if "WINDOW" in c_upper or "TYPE" in c_upper or "LOCATION" in c_upper:
+            if not win_col: win_col = col
+        elif "WIDTH" in c_upper:
+            width_col = col
+        elif "HEIGHT" in c_upper:
+            height_col = col
+        elif "SQ" in c_upper or "AREA" in c_upper:
+            sqft_col = col
+        elif "SPECE" in c_upper or "GLASS" in c_upper or "THICKNESS" in c_upper:
+            glass_col = col
+        elif "QTY" in c_upper or "NOS" in c_upper:
+            qty_col = col
 
-    # Fallbacks if column names don't match standard keywords
-    win_col = col_map.get('window', df.columns[0])
-    sqft_col = col_map.get('sqft', df.columns[1] if len(df.columns) > 1 else df.columns[0])
-    spec_col = col_map.get('spec', df.columns[2] if len(df.columns) > 2 else df.columns[0])
+    # Fallbacks for critical columns
+    win_col = win_col if win_col else df.columns[2]
+    sqft_col = sqft_col if sqft_col else df.columns[7]
+    glass_col = glass_col if glass_col else df.columns[-1]
 
-    # Clean data
-    df_clean = df.copy()
-    df_clean[sqft_col] = pd.to_numeric(df_clean[sqft_col], errors='coerce').fillna(0)
-    df_clean['Is_Frosted'] = df_clean[spec_col].astype(str).str.lower().str.contains('frost|frosted|satin|etched|opaque')
+    # Filter out invalid/empty rows
+    df[sqft_col] = pd.to_numeric(df[sqft_col], errors='coerce')
+    df = df.dropna(subset=[sqft_col])
+    df = df[df[sqft_col] > 0]
 
-    # Safe GroupBy Calculation
-    records = []
-    for win_name, group in df_clean.groupby(win_col):
-        tot_sqft = group[sqft_col].sum()
-        frosted_sqft = group[group['Is_Frosted']][sqft_col].sum()
-        non_frosted_sqft = group[~group['Is_Frosted']][sqft_col].sum()
+    # Rule: Detect "Frosted Toughened" / "Special Glass" (Ignore plain "Frosted")
+    def is_special_glass(val):
+        text = str(val).lower()
+        if "frosted toughened" in text or "frosted toughen" in text or "special" in text:
+            return True
+        return False
+
+    df['Is_Special'] = df[glass_col].apply(is_special_glass)
+
+    # Process and Aggregate Window Wise Data
+    summary_list = []
+    grouped = df.groupby(win_col)
+
+    for win_name, group in grouped:
+        all_window_sqft = group[sqft_col].sum()
+        special_glass_sqft = group[group['Is_Special']][sqft_col].sum()
         
-        records.append({
-            'Window Code / Name': str(win_name),
-            'Total OC Sqft': round(tot_sqft, 2),
-            'Frosted Sqft': round(frosted_sqft, 2),
-            'Non-Frosted Sqft': round(non_frosted_sqft, 2),
-            'Total Panels': len(group)
+        # Dimensions and Spec representation
+        sample_w = group[width_col].iloc[0] if width_col in group.columns else "-"
+        sample_h = group[height_col].iloc[0] if height_col in group.columns else "-"
+        sample_qty = len(group)
+        glass_type = ", ".join(group[glass_col].astype(str).unique())
+
+        summary_list.append({
+            'Window Type / Code': str(win_name),
+            'Width (mm)': sample_w,
+            'Height (mm)': sample_h,
+            'Qty': sample_qty,
+            'Glass Specification': glass_type,
+            'ALL Window SQFT': round(all_window_sqft, 2),
+            'Special glass SQFT': round(special_glass_sqft, 2)
         })
 
-    result_df = pd.DataFrame(records)
-    return result_df
+    return pd.DataFrame(summary_list), target_sheet
 
-# ============================================================
-# CUSTOM UI CSS
-# ============================================================
+# Custom UI
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', sans-serif !important;
         background-color: #f8fafc !important;
         color: #0f172a !important;
     }
-
     .header-container {
         background: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         padding: 24px 32px;
         margin-bottom: 24px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
     }
-
-    .main-title {
-        color: #0f172a !important;
-        font-size: 22px !important;
-        font-weight: 800 !important;
-        margin: 0 0 6px 0 !important;
-    }
-
-    .main-subtitle {
-        color: #64748b !important;
-        font-size: 13px !important;
-        font-weight: 500 !important;
-        margin: 0 !important;
-    }
-
-    .step-heading {
-        color: #0f172a;
-        font-size: 15px;
-        font-weight: 700;
-        margin-top: 10px;
-        margin-bottom: 12px;
-    }
-
+    .main-title { font-size: 22px !important; font-weight: 800 !important; color: #0f172a; }
+    .main-subtitle { font-size: 13px !important; color: #64748b; }
     div.stButton > button[kind="primary"] {
         background: #2563eb !important;
         border: none !important;
         color: #ffffff !important;
         font-weight: 600 !important;
-        border-radius: 6px !important;
     }
-
-    .sidebar-logo {
-        width: 140px;
-        height: auto;
-        margin-bottom: 20px;
-    }
-
-    [data-testid="stHeader"] { display: none; }
     </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# SIDEBAR
-# ============================================================
+# Sidebar
 with st.sidebar:
     if logo_b64:
-        st.markdown(f'<img src="data:image/png;base64,{logo_b64}" class="sidebar-logo">', unsafe_allow_html=True)
-    else:
-        st.markdown("<h2 style='color:#0f172a; font-weight:800;'>WinSquare</h2>", unsafe_allow_html=True)
-    
-    st.divider()
+        st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="width:140px;">', unsafe_allow_html=True)
     st.markdown("### 🪟 Window Details Module")
-    st.caption("Auto-calculates total square feet per window code with Frosted vs Non-Frosted glass breakdown.")
+    st.caption("Reads MEASUREMENT / 2nd Sheet to process Window SQFT & Special Frosted Toughened Glass SQFT.")
 
-# ============================================================
-# HEADER
-# ============================================================
+# Header
 st.markdown("""
     <div class="header-container">
-        <div class="main-title">Window Details & Area Breakdown</div>
-        <div class="main-subtitle">Comprehensive window codes directory, total Sqft (All OC), Frosted and Non-Frosted Glass measurement generator.</div>
+        <div class="main-title">Window Details & Glass SQFT Engine</div>
+        <div class="main-subtitle">Automated Reader for 'MEASUREMENT' Sheet (ALL Window SQFT & Special Glass SQFT)</div>
     </div>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# FILE UPLOAD
-# ============================================================
-st.markdown('<div class="step-heading">📁 Upload BOQ / Window Schedule Excel Sheet</div>', unsafe_allow_html=True)
-
-uploaded_file = st.file_uploader(
-    "Upload BOQ Excel file",
-    type=["xlsx", "xls"],
-    label_visibility="collapsed"
-)
+# File Upload
+uploaded_file = st.file_uploader("Upload Excel BOQ File", type=["xlsx", "xls"])
 
 if uploaded_file:
     try:
-        raw_df = pd.read_excel(uploaded_file)
-        st.success(f"File uploaded successfully! Loaded {len(raw_df)} rows.")
+        result_df, sheet_used = process_measurement_sheet(uploaded_file)
         
-        with st.expander("📄 View Raw Excel File", expanded=False):
-            st.dataframe(raw_df, use_container_width=True)
+        st.success(f"Successfully processed sheet: **'{sheet_used}'**")
+        
+        st.markdown("### 📑 Window Details Output Table")
+        st.dataframe(result_df, use_container_width=True)
 
-        if st.button("📊 Generate Window Details & Breakdown", type="primary"):
-            with st.spinner("Calculating Window-Wise Square Feet..."):
-                result_df = calculate_window_sqft(raw_df)
-                st.session_state["window_result"] = result_df
+        # Totals Display Cards
+        st.markdown("<br>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns(3)
+        
+        total_all_sqft = result_df["ALL Window SQFT"].sum()
+        total_special_sqft = result_df["Special glass SQFT"].sum()
+
+        with c1:
+            st.metric("Total Window Types", len(result_df))
+        with c2:
+            st.metric("Total ALL Window SQFT", f"{total_all_sqft:,.2f} sqft")
+        with c3:
+            st.metric("Total Special Glass SQFT (Frosted Toughened)", f"{total_special_sqft:,.2f} sqft")
 
     except Exception as e:
-        st.error(f"Error reading file: {str(e)}")
-
-# ============================================================
-# RESULT DASHBOARD & SUMMARY
-# ============================================================
-if "window_result" in st.session_state and not st.session_state["window_result"].empty:
-    res_df = st.session_state["window_result"]
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📊 Overall Area Summary")
-
-    total_windows = len(res_df)
-    total_oc_sqft = res_df["Total OC Sqft"].sum()
-    total_frosted_sqft = res_df["Frosted Sqft"].sum()
-    total_non_frosted_sqft = res_df["Non-Frosted Sqft"].sum()
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.markdown(f"""
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px;">
-                <p style="color: #64748b; font-size: 11px; font-weight: 700; margin: 0;">TOTAL WINDOW TYPES</p>
-                <h3 style="color: #0f172a; font-size: 24px; font-weight: 800; margin: 4px 0 0 0;">{total_windows}</h3>
-            </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown(f"""
-            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px;">
-                <p style="color: #2563eb; font-size: 11px; font-weight: 700; margin: 0;">TOTAL OC SQFT</p>
-                <h3 style="color: #1d4ed8; font-size: 24px; font-weight: 800; margin: 4px 0 0 0;">{total_oc_sqft:,.2f}</h3>
-            </div>
-        """, unsafe_allow_html=True)
-
-    with col3:
-        st.markdown(f"""
-            <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 8px; padding: 14px 18px;">
-                <p style="color: #854d0e; font-size: 11px; font-weight: 700; margin: 0;">FROSTED GLASS SQFT</p>
-                <h3 style="color: #a16207; font-size: 24px; font-weight: 800; margin: 4px 0 0 0;">{total_frosted_sqft:,.2f}</h3>
-            </div>
-        """, unsafe_allow_html=True)
-
-    with col4:
-        st.markdown(f"""
-            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 18px;">
-                <p style="color: #166534; font-size: 11px; font-weight: 700; margin: 0;">NON-FROSTED SQFT</p>
-                <h3 style="color: #15803d; font-size: 24px; font-weight: 800; margin: 4px 0 0 0;">{total_non_frosted_sqft:,.2f}</h3>
-            </div>
-        """, unsafe_allow_html=True)
-
-    # Detailed Table
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📑 Window-Wise Breakdown Table")
-    st.dataframe(res_df, use_container_width=True, height=350)
-
-    # Built-in Chart
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📈 Windows Area Breakdown Chart")
-    chart_data = res_df.set_index("Window Code / Name")[["Non-Frosted Sqft", "Frosted Sqft"]]
-    st.bar_chart(chart_data)
+        st.error(f"Error parsing sheet: {str(e)}")
