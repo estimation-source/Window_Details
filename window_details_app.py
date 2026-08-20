@@ -1,185 +1,286 @@
 from __future__ import annotations
 
-import io
-import math
 import os
 import re
-import sys
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
-
-import openpyxl
 import pandas as pd
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
 from PIL import Image
 import streamlit as st
 
 # ============================================================
-# 1. Streamlit Page Config
+# 1. Page Config
 # ============================================================
 st.set_page_config(
-    page_title="WIN-SQUARE | Universal Window Details Engine",
-    layout="wide",
+    page_title="Universal Window Details & Glass SQFT Engine",
     page_icon="🪟",
+    layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ============================================================
-# 2. FIX CSS: Header चालू ठेवून Sidebar Toggle Button Visible ठेवणे
-# ============================================================
+# Helper Function for File Path
+def get_image_path(filename: str) -> str:
+    return os.path.join(os.path.abspath("."), filename)
+
+# Rule for Special Glass
+def check_special_glass(spec):
+    glass_lower = str(spec).lower()
+    if "frosted" in glass_lower and "toughened" not in glass_lower and "tough" not in glass_lower:
+        return False
+    elif "toughened" in glass_lower or "tough" in glass_lower or "dgu" in glass_lower or "satin" in glass_lower:
+        return True
+    return False
+
+# ===================================================================
+# OPTION 1: MEASUREMENT SHEET READER (HORIZONTAL TABLE FORMAT)
+# ===================================================================
+def parse_measurement_sheet(file_obj, sheet_name):
+    df_raw = pd.read_excel(file_obj, sheet_name=sheet_name, header=None)
+
+    start_row = 0
+    for idx, row in df_raw.iterrows():
+        val0 = str(row.iloc[0]).strip() if len(row) > 0 else ""
+        val1 = str(row.iloc[1]).strip() if len(row) > 1 else ""
+        if val0.isdigit() or val1.isdigit():
+            start_row = idx
+            break
+
+    df_data = df_raw.iloc[start_row:].copy().reset_index(drop=True)
+    rows = []
+
+    for _, row in df_data.iterrows():
+        win_type = str(row.iloc[2]).strip() if len(row) > 2 and pd.notna(row.iloc[2]) else ""
+        location = str(row.iloc[3]).strip() if len(row) > 3 and pd.notna(row.iloc[3]) else ""
+        
+        window_name = f"{win_type} ({location})" if location and location != "nan" else win_type
+        if not window_name or window_name == "nan":
+            continue
+
+        width = pd.to_numeric(row.iloc[5], errors='coerce') if len(row) > 5 else "-"
+        height = pd.to_numeric(row.iloc[6], errors='coerce') if len(row) > 6 else "-"
+        sqft = pd.to_numeric(row.iloc[7], errors='coerce') if len(row) > 7 else 0
+        thickness = str(row.iloc[10]).strip() if len(row) > 10 and pd.notna(row.iloc[10]) and str(row.iloc[10]).strip() != "nan" else "-"
+        glass_spec = str(row.iloc[11]).strip() if len(row) > 11 and pd.notna(row.iloc[11]) and str(row.iloc[11]).strip() != "nan" else ""
+
+        if pd.isna(sqft) or sqft <= 0:
+            continue
+
+        rows.append({
+            'Window Code / Type': window_name,
+            'Width (mm)': width if pd.notna(width) else "-",
+            'Height (mm)': height if pd.notna(height) else "-",
+            'Thickness': thickness,
+            'Glass Specification': glass_spec,
+            'SQFT': sqft
+        })
+
+    return rows
+
+# ===================================================================
+# OPTION 2: QUOTATION SHEET READER (VERTICAL BLOCK FORMAT - WinSquare)
+# ===================================================================
+def parse_quotation_block_sheet(file_obj, sheet_name):
+    df_raw = pd.read_excel(file_obj, sheet_name=sheet_name, header=None)
+    rows = []
+    num_rows = len(df_raw)
+
+    for r in range(num_rows):
+        row_vals = [str(val).strip() for val in df_raw.iloc[r].values if pd.notna(val) and str(val).strip() != "nan"]
+        row_str = " ".join(row_vals)
+
+        if "CODE :" in row_str.upper() or "CODE:" in row_str.upper():
+            code_val = ""
+            name_val = ""
+            glass_val = ""
+            width_val = "-"
+            height_val = "-"
+            sqft_val = 0
+            thick_val = "-"
+
+            code_match = re.search(r'CODE\s*:\s*([A-Za-z0-9_\-]+)', row_str, re.IGNORECASE)
+            if code_match:
+                code_val = code_match.group(1).strip()
+
+            for r_offset in range(r, min(r + 25, num_rows)):
+                sub_row = df_raw.iloc[r_offset]
+                sub_vals = [str(v).strip() for v in sub_row.values if pd.notna(v) and str(v).strip() != "nan"]
+                sub_str = " ".join(sub_vals)
+
+                if ("NAME :" in sub_str.upper() or "NAME:" in sub_str.upper()) and not name_val:
+                    m = re.search(r'NAME\s*:\s*(.*?)(?=Profile System|Size|Location|$)', sub_str, re.IGNORECASE)
+                    if m:
+                        name_val = m.group(1).strip()
+
+                if ("GLASS :" in sub_str.upper() or "GLASS:" in sub_str.upper()) and not glass_val:
+                    m = re.search(r'GLASS\s*:\s*(.*)', sub_str, re.IGNORECASE)
+                    if m:
+                        glass_val = m.group(1).strip()
+                        tm = re.search(r'(\d+\s*MM(?:\s*DGU)?)', glass_val, re.IGNORECASE)
+                        if tm:
+                            thick_val = tm.group(1).strip()
+
+                for c in range(len(sub_row)):
+                    cell_txt = str(sub_row.iloc[c]).strip().upper()
+                    
+                    if cell_txt in ["WIDHT", "WIDTH"]:
+                        for c_next in range(c + 1, len(sub_row)):
+                            num = pd.to_numeric(sub_row.iloc[c_next], errors='coerce')
+                            if pd.notna(num) and num > 0:
+                                width_val = num
+                                break
+
+                    elif cell_txt == "HEIGHT":
+                        for c_next in range(c + 1, len(sub_row)):
+                            num = pd.to_numeric(sub_row.iloc[c_next], errors='coerce')
+                            if pd.notna(num) and num > 0:
+                                height_val = num
+                                break
+
+                    elif cell_txt == "SQFT":
+                        for c_next in range(c + 1, len(sub_row)):
+                            num = pd.to_numeric(sub_row.iloc[c_next], errors='coerce')
+                            if pd.notna(num) and num > 0:
+                                sqft_val = num
+                                break
+
+            full_name = f"{code_val} - {name_val}" if code_val and name_val else (code_val or name_val or "Window Block")
+            
+            if sqft_val > 0:
+                rows.append({
+                    'Window Code / Type': full_name,
+                    'Width (mm)': width_val,
+                    'Height (mm)': height_val,
+                    'Thickness': thick_val,
+                    'Glass Specification': glass_val,
+                    'SQFT': sqft_val
+                })
+
+    return rows
+
+# ===================================================================
+# MAIN PROCESSOR
+# ===================================================================
+def process_excel_with_mode(file_obj, format_mode):
+    excel_file = pd.ExcelFile(file_obj)
+    sheet_names = excel_file.sheet_names
+
+    target_sheet = None
+
+    if format_mode == "Option 1: Measurement Table":
+        for s in sheet_names:
+            if "MEASUREMENT" in str(s).upper():
+                target_sheet = s
+                break
+        if not target_sheet:
+            target_sheet = sheet_names[0]
+        parsed_rows = parse_measurement_sheet(file_obj, target_sheet)
+
+    elif format_mode == "Option 2: Quotation Block Layout":
+        for s in sheet_names:
+            if "SHEET2" in str(s).upper() or "QUOTE" in str(s).upper():
+                target_sheet = s
+                break
+        if not target_sheet:
+            target_sheet = sheet_names[1] if len(sheet_names) > 1 else sheet_names[0]
+        parsed_rows = parse_quotation_block_sheet(file_obj, target_sheet)
+
+    else:  # AUTO-DETECT
+        found_block_sheet = None
+        for s in sheet_names:
+            txt = " ".join([str(v) for v in pd.read_excel(file_obj, sheet_name=s, header=None).fillna('').values.flatten()]).upper()
+            if "CODE :" in txt or "CODE:" in txt or "WIDHT" in txt:
+                found_block_sheet = s
+                break
+
+        if found_block_sheet:
+            target_sheet = found_block_sheet
+            parsed_rows = parse_quotation_block_sheet(file_obj, target_sheet)
+        else:
+            for s in sheet_names:
+                if "MEASUREMENT" in str(s).upper():
+                    target_sheet = s
+                    break
+            if not target_sheet:
+                target_sheet = sheet_names[0]
+            parsed_rows = parse_measurement_sheet(file_obj, target_sheet)
+
+    df_clean = pd.DataFrame(parsed_rows)
+    if df_clean.empty:
+        return pd.DataFrame(), target_sheet
+
+    df_clean['Is_Special'] = df_clean['Glass Specification'].apply(check_special_glass)
+
+    summary = []
+    for win_code, group in df_clean.groupby('Window Code / Type'):
+        all_sqft = group['SQFT'].sum()
+        special_sqft = group[group['Is_Special']]['SQFT'].sum()
+        
+        sample_w = group['Width (mm)'].iloc[0]
+        sample_h = group['Height (mm)'].iloc[0]
+        
+        thick_vals = [str(t) for t in group['Thickness'].unique() if str(t).strip() not in ["", "-", "nan"]]
+        thick_type = ", ".join(thick_vals) if thick_vals else "-"
+        
+        glass_vals = [str(g) for g in group['Glass Specification'].unique() if str(g).strip() not in ["", "nan"]]
+        glass_type = ", ".join(glass_vals) if glass_vals else "Standard Glass"
+
+        summary.append({
+            'Window Code / Type': str(win_code),
+            'Width (mm)': sample_w,
+            'Height (mm)': sample_h,
+            'Qty': len(group),
+            'Thickness': thick_type,
+            'Glass Specification': glass_type,
+            'ALL Window SQFT': round(all_sqft, 2),
+            'Special glass SQFT': round(special_sqft, 2)
+        })
+
+    return pd.DataFrame(summary), target_sheet
+
+
+# PAGE AND ELEMENT STYLING
 st.markdown("""
     <style>
-    header[data-testid="stHeader"] {
-        z-index: 99999 !important;
-        background: transparent !important;
-    }
-
-    button[data-testid="stSidebarCollapsedControl"],
-    button[data-testid="stSidebarNavCollapseButton"] {
-        display: flex !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        background-color: #FF4B4B !important;
-        color: white !important;
-        border-radius: 8px !important;
-        position: fixed !important;
-        top: 12px !important;
-        left: 12px !important;
-        z-index: 999999 !important;
-        box-shadow: 0px 3px 8px rgba(0,0,0,0.3) !important;
-    }
-
-    button[data-testid="stSidebarCollapsedControl"] svg,
-    button[data-testid="stSidebarNavCollapseButton"] svg {
-        fill: white !important;
-        color: white !important;
-        width: 22px !important;
-        height: 22px !important;
-    }
-
-    [data-testid="stStatusWidget"],
-    #MainMenu, 
-    footer {
-        display: none !important;
-        visibility: hidden !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# State Management
-if "uploader_key" not in st.session_state:
-    st.session_state["uploader_key"] = 0
-
-# ============================================================
-# 3. UI Layout & Fonts CSS
-# ============================================================
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     
     html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-        background-color: #f4f6f9;
-        color: #334155;
-    }
-
-    .main .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 2rem;
-        max-width: 98%;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        background-color: #f8fafc !important;
+        color: #0f172a !important;
     }
 
     [data-testid="stSidebar"] {
-        background-color: #f1f5f9;
-        border-right: 1px solid #e2e8f0;
-    }
-    
-    .quick-guide-title {
-        font-size: 15px;
-        font-weight: 700;
-        color: #0f172a;
-        margin-top: 15px;
-        margin-bottom: 12px;
-    }
-    
-    .quick-guide-step {
-        font-size: 13px;
-        color: #475569;
-        margin-bottom: 10px;
-        line-height: 1.4;
+        background-color: #f1f5f9 !important;
+        border-right: 1px solid #e2e8f0 !important;
     }
 
-    .hero-container {
+    /* Header Card */
+    .header-card {
         background: #ffffff;
-        border-radius: 16px;
-        padding: 24px 30px;
         border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        border-radius: 12px;
+        padding: 24px 32px;
         margin-bottom: 24px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-
-    .hero-title-text {
-        font-size: 22px;
-        font-weight: 800;
+    .main-title {
+        font-size: 22px !important;
+        font-weight: 800 !important;
         color: #0f172a;
-        margin: 0;
+        margin-bottom: 4px;
     }
-
-    .hero-sub-text {
-        font-size: 13px;
+    .main-subtitle {
+        font-size: 13px !important;
         color: #64748b;
-        margin-top: 4px;
     }
 
-    .step-title {
-        font-size: 16px;
-        font-weight: 700;
+    .step-header {
+        font-size: 15px !important;
+        font-weight: 700 !important;
         color: #1e293b;
         margin-bottom: 12px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
     }
 
-    .kpi-card-box {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 16px 20px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-    }
-
-    .kpi-title-lbl {
-        font-size: 11px;
-        font-weight: 700;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .kpi-val-lbl {
-        font-size: 24px;
-        font-weight: 800;
-        color: #0f172a;
-        margin-top: 6px;
-    }
-
-    /* CUSTOM FLEX CONTAINER FOR CLOSE BUTTONS LIKE IMAGE 2 */
-    .button-group-container {
-        display: flex;
-        align-items: center;
-        gap: 10px !important;
-        margin-top: 10px;
-        margin-bottom: 15px;
-    }
-
-    /* PRIMARY BLUE BUTTON - COMPACT & NORMAL FONT WEIGHT */
-    div.stButton > button[kind="primary"] {
+    /* FORCE BLUE BUTTON (PRIMARY TYPE) - COMPACT SIZE & NORMAL WEIGHT */
+    .stButton > button[kind="primary"] {
         background-color: #2563eb !important;
         background: #2563eb !important;
         border: 1px solid #2563eb !important;
@@ -189,13 +290,13 @@ st.markdown(
         padding: 0 16px !important;
         box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2) !important;
     }
-    div.stButton > button[kind="primary"]:hover {
+    .stButton > button[kind="primary"]:hover {
         background-color: #1d4ed8 !important;
         background: #1d4ed8 !important;
     }
 
-    /* SECONDARY RED BUTTON - COMPACT & NORMAL FONT WEIGHT */
-    div.stButton > button[kind="secondary"] {
+    /* FORCE RED BUTTON (SECONDARY TYPE OVERRIDE) - COMPACT SIZE & NORMAL WEIGHT */
+    .stButton > button[kind="secondary"] {
         background-color: #dc2626 !important;
         background: #dc2626 !important;
         border: 1px solid #dc2626 !important;
@@ -205,67 +306,27 @@ st.markdown(
         padding: 0 16px !important;
         box-shadow: 0 1px 2px rgba(220, 38, 38, 0.2) !important;
     }
-    div.stButton > button[kind="secondary"]:hover {
+    .stButton > button[kind="secondary"]:hover {
         background-color: #b91c1c !important;
         background: #b91c1c !important;
     }
 
-    /* DOWNLOAD GREEN BUTTON - COMPACT & NORMAL FONT WEIGHT */
-    div.stDownloadButton > button {
-        background-color: #059669 !important;
-        background: #059669 !important;
-        border: 1px solid #059669 !important;
-        color: #ffffff !important;
-        border-radius: 6px !important;
-        height: 38px !important;
-        padding: 0 16px !important;
-        box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2) !important;
-    }
-    div.stDownloadButton > button:hover {
-        background-color: #047857 !important;
-        background: #047857 !important;
-    }
-
-    /* FORCE NORMAL WEIGHT (NOT BOLD) & WHITE TEXT */
-    div.stButton > button p, div.stButton > button span,
-    div.stDownloadButton > button p, div.stDownloadButton > button span {
+    /* NORMAL WEIGHT (NOT BOLD) & WHITE TEXT FORCE */
+    .stButton > button p, .stButton > button span {
         color: #ffffff !important;
         font-weight: 500 !important;
-        font-size: 13px !important;
-    }
-
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 16px;
-        border-bottom: 1px solid #e2e8f0;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        height: 40px;
-        white-space: pre;
-        font-size: 13px;
-        font-weight: 600;
-        color: #64748b;
-    }
-
-    .stTabs [aria-selected="true"] {
-        color: #2563eb !important;
-        border-bottom: 2px solid #2563eb !important;
+        font-size: 14px !important;
     }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
+# Session State Initializations
+if 'df_result' not in st.session_state:
+    st.session_state['df_result'] = None
+if 'sheet_used' not in st.session_state:
+    st.session_state['sheet_used'] = None
 
-def get_image_path(filename):
-    if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, filename)
-    return os.path.join(os.path.abspath("."), filename)
-
-
-# =========================================================
-# SIDEBAR
-# =========================================================
+# SIDEBAR LOGO AND OPTIONS
 with st.sidebar:
     logo_file = get_image_path("logo.png")
     if os.path.exists(logo_file):
@@ -276,584 +337,80 @@ with st.sidebar:
         st.markdown("<h2 style='text-align: center; color:#1e293b;'><b>win square</b></h2>", unsafe_allow_html=True)
     
     st.markdown("---")
-    st.markdown("<div class='quick-guide-title'>💡 Quick Guide</div>", unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div class='quick-guide-step'><b>1.</b> Upload multi-sheet Excel BOQ files.</div>
-        <div class='quick-guide-step'><b>2.</b> Click on <b>Process Sheet</b>.</div>
-        <div class='quick-guide-step'><b>3.</b> Review window records in table or dashboard tabs.</div>
-        <div class='quick-guide-step'><b>4.</b> Click <b>Generate Windows Details Sheet</b>.</div>
-        <div class='quick-guide-step'><b>5.</b> Download formatted Excel sheet with SQFT breakdown.</div>
-        <div class='quick-guide-step'><b>6.</b> Use <b>Reset Data</b> to clear workspace.</div>
-        """,
-        unsafe_allow_html=True
+    
+    st.markdown("#### ⚙️ Reading Mode Option")
+    selected_mode = st.radio(
+        "Select Sheet Format Reader:",
+        ["Auto-Detect Format", "Option 1: Measurement Table", "Option 2: Quotation Block Layout"],
+        help="Choose Option 1 for MEASUREMENT horizontal table sheet, Option 2 for WinSquare Quotation block sheet."
     )
 
-
-# =========================================================
-# HEADER HERO BANNER
-# =========================================================
-st.markdown(
-    """
-    <div class="hero-container">
-        <div>
-            <div class="hero-title-text">Universal Window Details & Glass SQFT Engine</div>
-            <div class="hero-sub-text">Supports Measurement Sheets, Quotation Sheets & Block Layouts</div>
-        </div>
+# Header Card
+st.markdown("""
+    <div class="header-card">
+        <div class="main-title">Universal Window Details & Glass SQFT Engine</div>
+        <div class="main-subtitle">Supports Measurement Sheets, Quotation Sheets & Block Layouts</div>
     </div>
-    """,
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-# ============================================================
-# Global Engine Constants & Parsing Logic (WINDOWS DETAILS)
-# ============================================================
+# Step 1 Section
+st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>', unsafe_allow_html=True)
 
-HEADER_SCAN_LIMIT = 200
-HEADER_REMOVE_PATTERN = r"[^A-Z0-9]"
+uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-KEYWORDS = {
-    "CODE": ["CODE", "WINDOW CODE", "LOCATION", "REF"],
-    "WIDTH": [
-        ["FWIDTH"], ["F", "WIDTH"], ["FRAME", "W"], ["WIDTH"], ["W"]
-    ],
-    "HEIGHT": [
-        ["FHEIGHT"], ["F", "HEIGHT"], ["FRAME", "H"], ["HEIGHT"], ["H"]
-    ],
-    "QTY": ["QTY", "QUANTITY", "NO", "NOS"],
-    "GLASS": [["GLASS"], ["GLASS", "SPEC"], ["REMARKS"], ["DESCRIPTION"]],
-}
+st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-
-def standardize_glass_spec(val: str) -> str:
-    if pd.isna(val) or not str(val).strip():
-        return "NOT SPECIFIED"
-    text = str(val).strip()
-    if text.lower() == "nan" or not text:
-        return "NOT SPECIFIED"
-    return re.sub(r"\s+", " ", text).strip()
-
-
-@dataclass(slots=True)
-class HeaderInfo:
-    row_index: int
-    code_col: Optional[int] = None
-    width_col: Optional[int] = None
-    height_col: Optional[int] = None
-    qty_col: Optional[int] = None
-    glass_col: Optional[int] = None
-    columns: Dict[str, Optional[int]] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
-class HeaderBlock:
-    header: HeaderInfo
-    start_row: int
-    end_row: int
-
-
-@dataclass(slots=True)
-class WindowRecord:
-    WindowCode: str
-    Width: int
-    Height: int
-    Qty: int
-    GlassType: str
-    SourceFile: str
-    SheetName: str
-
-
-def normalize_header(text: Any) -> str:
-    if pd.isna(text):
-        return ""
-    text = str(text).upper().strip()
-    return re.sub(HEADER_REMOVE_PATTERN, "", text)
-
-
-def normalize_header_row(row: pd.Series) -> List[str]:
-    return [normalize_header(val) for val in row.tolist()]
-
-
-def contains_keywords(text: str, keyword_groups: List[Any]) -> bool:
-    if not text:
-        return False
-    text = normalize_header(text)
-    text = re.sub(r"[^A-Z0-9]", "", text)
-
-    for group in keyword_groups:
-        if isinstance(group, str):
-            group = [group]
-        matched = True
-        for keyword in group:
-            key = re.sub(r"[^A-Z0-9]", "", normalize_header(keyword))
-            if key not in text:
-                matched = False
-                break
-        if matched:
-            return True
-    return False
-
-
-def detect_column(header_row: List[str], keyword_groups: List[Any]) -> Optional[int]:
-    for index, value in enumerate(header_row):
-        text = normalize_header(value)
-        text = re.sub(r"[^A-Z0-9]", "", text)
-        for group in keyword_groups:
-            if isinstance(group, str):
-                group = [group]
-            matched = True
-            for keyword in group:
-                key = re.sub(r"[^A-Z0-9]", "", normalize_header(keyword))
-                if key not in text:
-                    matched = False
-                    break
-            if matched:
-                return index
-    return None
-
-
-def detect_header_columns(header_row: pd.Series) -> Dict[str, Optional[int]]:
-    normalized = normalize_header_row(header_row)
-    columns = {
-        "code": detect_column(normalized, KEYWORDS["CODE"]),
-        "width": detect_column(normalized, KEYWORDS["WIDTH"]),
-        "height": detect_column(normalized, KEYWORDS["HEIGHT"]),
-        "qty": detect_column(normalized, KEYWORDS["QTY"]),
-        "glass": detect_column(normalized, KEYWORDS["GLASS"]),
-    }
-    return columns
-
-
-def is_business_header(row: pd.Series) -> bool:
-    normalized = normalize_header_row(row)
-    has_code = False
-    has_qty = False
-    has_dim = False
-
-    for value in normalized:
-        if contains_keywords(value, KEYWORDS["CODE"]):
-            has_code = True
-        if contains_keywords(value, KEYWORDS["QTY"]):
-            has_qty = True
-        if contains_keywords(value, KEYWORDS["WIDTH"]) or contains_keywords(value, KEYWORDS["HEIGHT"]):
-            has_dim = True
-
-    return has_code and (has_qty or has_dim)
-
-
-def find_header_blocks(dataframe: pd.DataFrame) -> List[HeaderInfo]:
-    headers: List[HeaderInfo] = []
-    rows = min(len(dataframe), HEADER_SCAN_LIMIT)
-
-    for row_number in range(rows):
-        row = dataframe.iloc[row_number]
-        if not is_business_header(row):
-            continue
-
-        columns = detect_header_columns(row)
-        header = HeaderInfo(
-            row_index=row_number,
-            code_col=columns["code"],
-            width_col=columns["width"],
-            height_col=columns["height"],
-            qty_col=columns["qty"],
-            glass_col=columns["glass"],
-            columns=columns,
-        )
-        headers.append(header)
-
-    return headers
-
-
-def build_header_blocks(dataframe: pd.DataFrame, headers: List[HeaderInfo]) -> List[HeaderBlock]:
-    blocks: List[HeaderBlock] = []
-    if not headers:
-        return blocks
-
-    headers = sorted(headers, key=lambda h: h.row_index)
-    for i, header in enumerate(headers):
-        start = header.row_index + 1
-        end = (
-            len(dataframe) - 1
-            if i == len(headers) - 1
-            else headers[i + 1].row_index - 1
-        )
-        blocks.append(HeaderBlock(header=header, start_row=start, end_row=end))
-
-    return blocks
-
-
-def safe_numeric(value: Any) -> Optional[int]:
-    if pd.isna(value):
-        return None
-    try:
-        val = float(value)
-        if val <= 0:
-            return None
-        return int(math.floor(val + 0.5))
-    except Exception:
-        return None
-
-
-def parse_header_block(dataframe: pd.DataFrame, block: HeaderBlock, source_file: str, sheet_name: str) -> List[WindowRecord]:
-    records: List[WindowRecord] = []
-    
-    for row_no in range(block.start_row, block.end_row + 1):
-        row = dataframe.iloc[row_no]
-        
-        # Code extraction
-        code_val = row.iloc[block.header.code_col] if block.header.code_col is not None and block.header.code_col < len(row) else None
-        if pd.isna(code_val) or not str(code_val).strip():
-            continue
-        
-        code_str = str(code_val).strip().replace(".0", "")
-        if code_str.upper() in ["CODE", "TOTAL", "SUBTOTAL"]:
-            continue
-
-        width_val = safe_numeric(row.iloc[block.header.width_col]) if block.header.width_col is not None and block.header.width_col < len(row) else None
-        height_val = safe_numeric(row.iloc[block.header.height_col]) if block.header.height_col is not None and block.header.height_col < len(row) else None
-        qty_val = safe_numeric(row.iloc[block.header.qty_col]) if block.header.qty_col is not None and block.header.qty_col < len(row) else 1
-        
-        glass_val = row.iloc[block.header.glass_col] if block.header.glass_col is not None and block.header.glass_col < len(row) else "NOT SPECIFIED"
-        glass_str = standardize_glass_spec(glass_val)
-
-        if width_val and height_val:
-            records.append(
-                WindowRecord(
-                    WindowCode=code_str,
-                    Width=width_val,
-                    Height=height_val,
-                    Qty=qty_val if qty_val else 1,
-                    GlassType=glass_str,
-                    SourceFile=source_file,
-                    SheetName=sheet_name,
-                )
-            )
-
-    return records
-
-
-def parse_business_sheet(dataframe: pd.DataFrame, source_file: str, sheet_name: str) -> List[WindowRecord]:
-    headers = find_header_blocks(dataframe)
-    blocks = build_header_blocks(dataframe, headers)
-    all_records: List[WindowRecord] = []
-
-    for block in blocks:
-        all_records.extend(parse_header_block(dataframe, block, source_file, sheet_name))
-
-    return all_records
-
-
-def load_excel_with_calculated_values(file) -> Dict[str, pd.DataFrame]:
-    file_bytes = io.BytesIO(file.read())
-    file.seek(0)
-    wb = openpyxl.load_workbook(file_bytes, data_only=True)
-    workbook_dict = {}
-
-    for sheet_name in wb.sheetnames:
-        sheet = wb[sheet_name]
-        data = sheet.values
-        cols = next(data, None)
-        if cols is None:
-            continue
-
-        data_rows = list(data)
-        if cols:
-            data_rows.insert(0, cols)
-
-        df = pd.DataFrame(data_rows)
-        workbook_dict[sheet_name] = df
-
-    return workbook_dict
-
-
-def process_uploaded_files(uploaded_files) -> pd.DataFrame:
-    all_records = []
-
-    for file in uploaded_files:
-        try:
-            workbook_dict = load_excel_with_calculated_values(file)
-            for sheet_name, df in workbook_dict.items():
-                records = parse_business_sheet(df, file.name, sheet_name)
-                all_records.extend(records)
-        except Exception as e:
-            st.error(f"Error processing file {file.name}: {e}")
-
-    return pd.DataFrame([asdict(r) for r in all_records]).reset_index(drop=True) if all_records else pd.DataFrame()
-
-
-# ============================================================
-# STEP 1: FILE UPLOAD SECTION
-# ============================================================
-st.markdown("<div class='step-title'>📁 Step 1: Upload BOQ Excel Files</div>", unsafe_allow_html=True)
-
-uploaded_files = st.file_uploader(
-    "Upload BOQ Excel Files",
-    type=["xlsx", "xlsm", "xls"],
-    accept_multiple_files=True,
-    label_visibility="collapsed",
-    key=f"boq_uploader_{st.session_state['uploader_key']}"
-)
-
-# CLOSE BUTTON LAYOUT LIKE IMAGE 2
-st.markdown("<div class='button-group-container'>", unsafe_allow_html=True)
-btn_col1, btn_col2, _ = st.columns([0.20, 0.18, 0.62])
+# BUTTONS IN INLINE CONTAINER (AUTO / TEXT SIZE WIDTH)
+btn_col1, btn_col2, _ = st.columns([1, 1, 6])
 
 with btn_col1:
-    btn_merge = st.button("🔗 Process Sheet", type="primary", use_container_width=False)
+    btn_process = st.button("🔗 Process Sheet", type="primary", use_container_width=False)
 
 with btn_col2:
     btn_reset = st.button("🗑️ Reset Data", type="secondary", use_container_width=False)
 
-st.markdown("</div>", unsafe_allow_html=True)
-
-if btn_merge:
-    if uploaded_files:
-        with st.spinner("Processing & Extracting Window Records..."):
-            df_merged = process_uploaded_files(uploaded_files)
-            if not df_merged.empty:
-                st.session_state["merged_df"] = df_merged
-                st.toast(f"Successfully Extracted {len(df_merged)} Window Records!", icon="✅")
-            else:
-                st.error("⚠️ No valid window records found in uploaded file(s).")
-    else:
-        st.warning("Please upload Excel file(s) first!")
-
+# Reset Logic
 if btn_reset:
-    for key in ["merged_df", "win_df_preview", "win_bytes", "win_generated"]:
-        if key in st.session_state:
-            del st.session_state[key]
-    st.session_state["uploader_key"] += 1
+    st.session_state['df_result'] = None
+    st.session_state['sheet_used'] = None
     st.rerun()
 
+# Process Logic
+if btn_process:
+    if uploaded_file is not None:
+        try:
+            with st.spinner("Processing file..."):
+                df_res, used_sheet = process_excel_with_mode(uploaded_file, selected_mode)
+                st.session_state['df_result'] = df_res
+                st.session_state['sheet_used'] = used_sheet
+        except Exception as e:
+            st.error(f"Error parsing sheet: {str(e)}")
+    else:
+        st.warning("Please upload an Excel file first.")
 
-# ============================================================
-# EXTRACTED MASTER WINDOW RECORDS & DASHBOARD
-# ============================================================
-if "merged_df" in st.session_state:
-    df_merged = st.session_state["merged_df"]
+# Results Display
+if st.session_state['df_result'] is not None:
+    res_df = st.session_state['df_result']
+    used_sheet = st.session_state['sheet_used']
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("<div class='step-title'>📋 Extracted Window Details & Master Records</div>", unsafe_allow_html=True)
+    st.success(f"Successfully processed sheet: **'{used_sheet}'**")
 
-    f_col1, f_col2 = st.columns([2, 2])
-    with f_col1:
-        search_query = st.text_input("🔍 Quick Search (Window Code / Glass Spec)", placeholder="Type to filter...")
-    with f_col2:
-        glass_types = ["ALL"] + sorted(list(df_merged["GlassType"].unique()))
-        selected_glass = st.selectbox("Filter by Glass Spec", glass_types)
+    if not res_df.empty:
+        st.markdown("### 📑 Window Details Output Table")
+        st.dataframe(res_df, use_container_width=True)
 
-    filtered_df = df_merged.copy()
-    if search_query:
-        filtered_df = filtered_df[
-            filtered_df["WindowCode"].str.contains(search_query, case=False, na=False) |
-            filtered_df["GlassType"].str.contains(search_query, case=False, na=False)
-        ]
-    if selected_glass != "ALL":
-        filtered_df = filtered_df[filtered_df["GlassType"] == selected_glass]
-
-    filtered_display_df = filtered_df.copy()
-    if "Sr. No." not in filtered_display_df.columns:
-        filtered_display_df.insert(0, "Sr. No.", range(1, len(filtered_display_df) + 1))
-
-    st.dataframe(filtered_display_df, use_container_width=True, height=260, hide_index=True)
-    st.caption(f"Showing {len(filtered_df)} of {len(df_merged)} total extracted records")
-
-    # ============================================================
-    # STEP 2: DASHBOARD KPI CARDS & GENERATE BUTTON
-    # ============================================================
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("<div class='step-title'>⚡ Step 2: Dashboard Analytics & Processing</div>", unsafe_allow_html=True)
-
-    if st.button("⚡ GENERATE WINDOWS DETAILS SHEET (EXCEL)", type="primary", use_container_width=False):
-        with st.spinner("Calculating SQFT and preparing Dashboard Breakdown..."):
-            df_win_preview = df_merged.copy()
-            df_win_preview["SQFT"] = ((df_win_preview["Width"] * df_win_preview["Height"]) / 92903.04).round(6)
-            df_win_preview["TTL SQFT"] = (df_win_preview["SQFT"] * df_win_preview["Qty"]).round(6)
-
-            df_win_preview.insert(0, "Sr.No", range(1, len(df_win_preview) + 1))
-            df_win_preview = df_win_preview.rename(
-                columns={
-                    "WindowCode": "WINDOW CODE",
-                    "Width": "WIDTH",
-                    "Height": "HEIGHT",
-                    "Qty": "QTY",
-                    "GlassType": "REMARKS",
-                }
-            )
-
-            preview_cols = ["Sr.No", "WINDOW CODE", "WIDTH", "HEIGHT", "SQFT", "QTY", "TTL SQFT", "REMARKS"]
-            df_win_preview = df_win_preview[preview_cols]
-            st.session_state["win_df_preview"] = df_win_preview
-
-            # OpenPyXL Sheet Processing
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "WINDOW DETAILS"
-            ws.views.sheetView[0].showGridLines = True
-
-            title_font = Font(name="Calibri", size=12, bold=True)
-            header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-            data_font = Font(name="Calibri", size=10)
-            total_font = Font(name="Calibri", size=11, bold=True)
-
-            header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
-            total_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-
-            thin_border = Border(
-                left=Side(style="thin", color="D9D9D9"),
-                right=Side(style="thin", color="D9D9D9"),
-                top=Side(style="thin", color="D9D9D9"),
-                bottom=Side(style="thin", color="D9D9D9"),
-            )
-            thick_top_double_bottom = Border(
-                top=Side(style="thin", color="000000"),
-                bottom=Side(style="double", color="000000"),
-            )
-
-            ws.cell(row=1, column=1, value="WIN-SQUARE WINDOW DETAILS").font = title_font
-
-            headers = ["Sr.No", "WINDOW CODE", "WIDTH", "HEIGHT", "SQFT", "QTY", "TTL SQFT", "REMARKS"]
-            ws.append(headers)
-
-            for c in range(1, len(headers) + 1):
-                cell = ws.cell(row=2, column=c)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal="center" if c in [1, 6] else ("right" if c in [3, 4, 5, 7] else "left"))
-
-            for idx, row in df_merged.iterrows():
-                r_idx = idx + 3
-                sqft_formula = f"=ROUND((C{r_idx}*D{r_idx})/92903.04, 6)"
-                ttl_sqft_formula = f"=E{r_idx}*F{r_idx}"
-
-                ws.append([
-                    idx + 1, row["WindowCode"], row["Width"], row["Height"],
-                    sqft_formula, row["Qty"], ttl_sqft_formula, row["GlassType"],
-                ])
-
-                for c in range(1, len(headers) + 1):
-                    cell = ws.cell(row=r_idx, column=c)
-                    cell.font = data_font
-                    cell.border = thin_border
-                    if c in [3, 4]:
-                        cell.number_format = "0"
-                        cell.alignment = Alignment(horizontal="right")
-                    elif c == 5:
-                        cell.number_format = "0.000000"
-                        cell.alignment = Alignment(horizontal="right")
-                    elif c == 6:
-                        cell.number_format = "0"
-                        cell.alignment = Alignment(horizontal="center")
-                    elif c == 7:
-                        cell.number_format = "0.000000"
-                        cell.alignment = Alignment(horizontal="right")
-
-            tot_row = len(df_merged) + 3
-            ws.cell(row=tot_row, column=5, value="TOTAL").font = total_font
-            ws.cell(row=tot_row, column=5).alignment = Alignment(horizontal="right")
-
-            qty_sum = ws.cell(row=tot_row, column=6, value=f"=SUM(F3:F{tot_row-1})")
-            qty_sum.font = total_font
-            qty_sum.number_format = "0"
-            qty_sum.alignment = Alignment(horizontal="center")
-
-            ttl_sqft_sum = ws.cell(row=tot_row, column=7, value=f"=SUM(G3:G{tot_row-1})")
-            ttl_sqft_sum.font = total_font
-            ttl_sqft_sum.number_format = "0.000000"
-            ttl_sqft_sum.alignment = Alignment(horizontal="right")
-
-            for c in range(1, len(headers) + 1):
-                cell = ws.cell(row=tot_row, column=c)
-                cell.fill = total_fill
-                cell.border = thick_top_double_bottom
-
-            for col in ws.columns:
-                max_len = max(len(str(cell.value or "")) for cell in col)
-                col_letter = get_column_letter(col[0].column)
-                ws.column_dimensions[col_letter].width = max(max_len + 3, 14)
-
-            output = io.BytesIO()
-            wb.save(output)
-            st.session_state["win_bytes"] = output.getvalue()
-            st.session_state["win_generated"] = True
-
-    # Render KPI Cards & Live Dashboard Preview
-    if st.session_state.get("win_generated"):
         st.markdown("<br>", unsafe_allow_html=True)
+        m1, m2, m3 = st.columns(3)
         
-        win_df = st.session_state["win_df_preview"]
-        tot_items = len(win_df)
-        tot_qty = win_df["QTY"].sum()
-        tot_area = win_df["TTL SQFT"].sum().round(2)
+        tot_all = res_df["ALL Window SQFT"].sum()
+        tot_spec = res_df["Special glass SQFT"].sum()
 
-        k1, k2, k3 = st.columns(3)
-        with k1:
-            st.markdown(f"<div class='kpi-card-box'><div class='kpi-title-lbl'>TOTAL WINDOW TYPES</div><div class='kpi-val-lbl'>{tot_items}</div></div>", unsafe_allow_html=True)
-        with k2:
-            st.markdown(f"<div class='kpi-card-box'><div class='kpi-title-lbl'>TOTAL WINDOW QUANTITY</div><div class='kpi-val-lbl'>{tot_qty} Pcs</div></div>", unsafe_allow_html=True)
-        with k3:
-            st.markdown(f"<div class='kpi-card-box'><div class='kpi-title-lbl'>TOTAL GLASS AREA (SQFT)</div><div class='kpi-val-lbl'>{tot_area:,.2f} Sq.Ft</div></div>", unsafe_allow_html=True)
-    
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        tab1, tab2, tab3 = st.tabs([
-            "📄 WINDOW DETAILS Live Preview", 
-            "📊 OC Wise Summary (Windows & SQFT)", 
-            "🧩 Glass Type Breakdown"
-        ])
-
-        with tab1:
-            st.dataframe(win_df, use_container_width=True, height=350, hide_index=True)
-
-        with tab2:
-            # OC WISE SUMMARY
-            df_merged_copy = df_merged.copy()
-            df_merged_copy["Total_SQFT"] = ((df_merged_copy["Width"] * df_merged_copy["Height"]) / 92903.04) * df_merged_copy["Qty"]
-
-            oc_summary = (
-                df_merged_copy.groupby("SourceFile", as_index=False)
-                .agg(
-                    Qty=("Qty", "sum"),
-                    Total_SQFT=("Total_SQFT", "sum")
-                )
-            )
-
-            oc_summary["Total_SQFT"] = oc_summary["Total_SQFT"].round(2)
-            oc_summary.columns = ["SourceFile (OC Name)", "Qty (Pcs)", "Total Glass SQFT"]
-            
-            if "Sr. No." not in oc_summary.columns:
-                oc_summary.insert(0, "Sr. No.", range(1, len(oc_summary) + 1))
-
-            st.dataframe(oc_summary, use_container_width=True, hide_index=True)
-
-        with tab3:
-            # GLASS TYPE BREAKDOWN
-            df_glass_copy = df_merged.copy()
-            df_glass_copy["Total_SQFT"] = ((df_glass_copy["Width"] * df_glass_copy["Height"]) / 92903.04) * df_glass_copy["Qty"]
-
-            glass_breakdown = (
-                df_glass_copy.groupby("GlassType", as_index=False)
-                .agg(
-                    Qty=("Qty", "sum"),
-                    Total_SQFT=("Total_SQFT", "sum")
-                )
-                .sort_values(by="Qty", ascending=False)
-            )
-
-            glass_breakdown["Total_SQFT"] = glass_breakdown["Total_SQFT"].round(2)
-            glass_breakdown.columns = ["Glass Type Specification", "Total Quantity (Pcs)", "Total Glass SQFT"]
-            glass_breakdown.insert(0, "Sr. No.", range(1, len(glass_breakdown) + 1))
-
-            st.dataframe(glass_breakdown, use_container_width=True, hide_index=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.success("✅ Windows Details Excel Sheet Ready! Complete with KPI Dashboard, OC summary, and Calibri styling.")
-        
-        st.download_button(
-            label="📥 DOWNLOAD WINDOW DETAILS SHEET (.XLSX)",
-            data=st.session_state["win_bytes"],
-            file_name="WINDOWS_DETAILS_SHEET.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=False
-        )
+        with m1:
+            st.metric("Total Window Types", len(res_df))
+        with m2:
+            st.metric("Total ALL Window SQFT", f"{tot_all:,.2f} sqft")
+        with m3:
+            st.metric("Total Special Glass SQFT", f"{tot_spec:,.2f} sqft")
+    else:
+        st.warning("No valid window rows found in the sheet. Please check the selected Reading Mode Option in sidebar.")
