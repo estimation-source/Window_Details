@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Helper Function: Base64 Logo
+# Helper Function: Base64 Logo (Reads logo.png from current directory)
 def get_base64_image(image_path: str) -> str | None:
     if os.path.exists(image_path):
         with open(image_path, "rb") as img_file:
@@ -243,7 +243,7 @@ def process_excel_with_mode(file_obj, format_mode):
     return pd.DataFrame(summary), target_sheet
 
 
-# Custom Matching UI CSS
+# Strict UI Styling Matching Dashboard
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -254,7 +254,7 @@ st.markdown("""
         color: #0f172a !important;
     }
     
-    /* Header Card */
+    /* Header Container */
     .header-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -274,61 +274,60 @@ st.markdown("""
         color: #64748b;
     }
 
-    /* Section Subtitle */
     .step-header {
         font-size: 15px !important;
         font-weight: 700 !important;
         color: #1e293b;
         margin-bottom: 12px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
     }
 
-    /* Custom Blue Button */
-    div.stButton > button[key="btn_process"] {
-        background-color: #2563eb !important;
-        color: white !important;
-        border: none !important;
+    /* Target Specific Buttons for Exact Color & Layout */
+    div.stButton > button {
         border-radius: 8px !important;
-        padding: 10px 24px !important;
+        padding: 10px 16px !important;
         font-weight: 600 !important;
         font-size: 14px !important;
         width: 100% !important;
-        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2) !important;
+        border: none !important;
+        cursor: pointer !important;
+        transition: all 0.2s ease !important;
     }
-    div.stButton > button[key="btn_process"]:hover {
+
+    /* Process Button styling (Blue) */
+    div.stButton > button[data-testid="baseButton-secondary"]:nth-of-type(1) {
+        background-color: #2563eb !important;
+        color: #ffffff !important;
+    }
+    
+    /* Custom Styling via Column Keys */
+    .btn-blue > button {
+        background-color: #2563eb !important;
+        color: white !important;
+    }
+    .btn-blue > button:hover {
         background-color: #1d4ed8 !important;
     }
 
-    /* Custom Red Button */
-    div.stButton > button[key="btn_reset"] {
+    .btn-red > button {
         background-color: #dc2626 !important;
         color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 10px 24px !important;
-        font-weight: 600 !important;
-        font-size: 14px !important;
-        width: 100% !important;
-        box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2) !important;
     }
-    div.stButton > button[key="btn_reset"]:hover {
+    .btn-red > button:hover {
         background-color: #b91c1c !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Session State for storing processed results
+# Session State
 if 'df_result' not in st.session_state:
     st.session_state['df_result'] = None
 if 'sheet_used' not in st.session_state:
     st.session_state['sheet_used'] = None
 
-# Sidebar (Cleaned - Quick Guide Removed)
+# Sidebar with Logo & Options
 with st.sidebar:
     if logo_b64:
-        st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="width:140px; margin-bottom: 20px;">', unsafe_allow_html=True)
+        st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="width:150px; margin-bottom: 24px; display:block;">', unsafe_allow_html=True)
     
     st.markdown("#### ⚙️ Reading Mode Option")
     selected_mode = st.radio(
@@ -337,7 +336,7 @@ with st.sidebar:
         help="Choose Option 1 for MEASUREMENT horizontal table sheet, Option 2 for WinSquare Quotation block sheet."
     )
 
-# Top Banner Header
+# Header Card
 st.markdown("""
     <div class="header-card">
         <div class="main-title">Universal Window Details & Glass SQFT Engine</div>
@@ -345,26 +344,32 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Step 1: Upload BOQ Excel Files
-st.markdown('<div class="step-header">📁 Step 1: Upload Excel File</div>', unsafe_allow_html=True)
+# Step 1 Section
+st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>', unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-col_btn1, col_btn2, _ = st.columns([1.5, 1.5, 4])
+# Button Layout Matching Dashboard (Tight columns next to each other)
+st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+col_p, col_r, _ = st.columns([1.2, 1.2, 3.6])
 
-with col_btn1:
-    btn_process = st.button("🔗 Process Sheet", key="btn_process")
+with col_p:
+    st.markdown('<div class="btn-blue">', unsafe_allow_html=True)
+    btn_process = st.button("🔗 Process Sheet", key="process_btn")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-with col_btn2:
-    btn_reset = st.button("🗑️ Reset Data", key="btn_reset")
+with col_r:
+    st.markdown('<div class="btn-red">', unsafe_allow_html=True)
+    btn_reset = st.button("🗑️ Reset Data", key="reset_btn")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# Handle Reset
+# Reset Logic
 if btn_reset:
     st.session_state['df_result'] = None
     st.session_state['sheet_used'] = None
     st.rerun()
 
-# Handle Process
+# Process Logic
 if btn_process:
     if uploaded_file is not None:
         try:
@@ -377,7 +382,7 @@ if btn_process:
     else:
         st.warning("Please upload an Excel file first.")
 
-# Display Results
+# Results Display
 if st.session_state['df_result'] is not None:
     res_df = st.session_state['df_result']
     used_sheet = st.session_state['sheet_used']
@@ -389,7 +394,6 @@ if st.session_state['df_result'] is not None:
         st.markdown("### 📑 Window Details Output Table")
         st.dataframe(res_df, use_container_width=True)
 
-        # Metrics Summary
         st.markdown("<br>", unsafe_allow_html=True)
         m1, m2, m3 = st.columns(3)
         
