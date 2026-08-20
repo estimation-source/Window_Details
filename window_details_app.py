@@ -252,12 +252,6 @@ st.markdown("""
         border-right: 1px solid #e2e8f0 !important;
     }
 
-    [data-testid="stSidebar"] hr {
-        margin-top: 1rem !important;
-        margin-bottom: 1.5rem !important;
-        border-color: #cbd5e1 !important;
-    }
-    
     /* Header Card */
     .header-card {
         background: #ffffff;
@@ -285,48 +279,45 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* GLOBAL FORCE OVERRIDE FOR ALL STREAMLIT BUTTONS */
-    button[data-testid="stBaseButton-secondary"], 
-    button[data-testid="stBaseButton-primary"],
-    div.stButton > button {
-        border-radius: 8px !important;
-        height: 44px !important;
-        font-size: 14px !important;
-        font-weight: 700 !important;
-        transition: all 0.2s ease-in-out !important;
-        border: none !important;
-    }
-
-    /* FIRST BUTTON: BLUE PROCESS SHEET */
-    div[data-testid="column"]:nth-of-type(1) button {
+    /* CUSTOM STYLING FOR PROCESS SHEET BUTTON (BLUE) */
+    div.stButton > button#blue_process_btn {
         background-color: #2563eb !important;
         background: #2563eb !important;
         color: #ffffff !important;
+        border-radius: 8px !important;
+        height: 42px !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        border: none !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
     }
-    div[data-testid="column"]:nth-of-type(1) button:hover {
+    div.stButton > button#blue_process_btn:hover {
         background-color: #1d4ed8 !important;
         background: #1d4ed8 !important;
     }
 
-    /* SECOND BUTTON: RED RESET DATA */
-    div[data-testid="column"]:nth-of-type(2) button {
+    /* CUSTOM STYLING FOR RESET DATA BUTTON (RED) */
+    div.stButton > button#red_reset_btn {
         background-color: #dc2626 !important;
         background: #dc2626 !important;
         color: #ffffff !important;
+        border-radius: 8px !important;
+        height: 42px !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        border: none !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
     }
-    div[data-testid="column"]:nth-of-type(2) button:hover {
+    div.stButton > button#red_reset_btn:hover {
         background-color: #b91c1c !important;
         background: #b91c1c !important;
     }
 
-    /* KEEP TEXT VISIBLE AND WHITE ALWAYS */
-    div[data-testid="column"] button p, 
-    div[data-testid="column"] button span {
+    /* FORCE ALL TEXT IN THESE BUTTONS TO STAY WHITE */
+    div.stButton > button#blue_process_btn *,
+    div.stButton > button#red_reset_btn * {
         color: #ffffff !important;
-        font-weight: 700 !important;
-        font-size: 14px !important;
-        display: block !important;
-        opacity: 1 !important;
+        font-weight: 600 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -369,16 +360,18 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-# DIRECT COLUMNS FOR BUTTONS
-btn_col1, btn_col2, _ = st.columns([2.5, 2.5, 5])
+# ===================================================================
+# NO FORM CONTAINER! DIRECT COLUMNS & CLEAN BUTTONS
+# ===================================================================
+btn_col1, btn_col2, _ = st.columns([2.2, 2.2, 5.6])
 
 with btn_col1:
-    btn_process = st.button("🔗 Process Sheet", key="process_btn_key", use_container_width=True)
+    btn_process = st.button("🔗 Process Sheet", key="blue_process_btn", use_container_width=True)
 
 with btn_col2:
-    btn_reset = st.button("🗑️ Reset Data", key="reset_btn_key", use_container_width=True)
+    btn_reset = st.button("🗑️ Reset Data", key="red_reset_btn", use_container_width=True)
 
 # Reset Logic
 if btn_reset:
