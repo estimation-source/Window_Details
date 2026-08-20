@@ -309,6 +309,21 @@ st.markdown("""
         margin-top: 6px;
     }
 
+    /* INLINE BUTTONS FLEX CONTAINER (12px GAP) */
+    div[data-testid="stHorizontalBlock"]:has(div.stButton) {
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+        gap: 12px !important;
+    }
+
+    div[data-testid="stHorizontalBlock"]:has(div.stButton) > div[data-testid="column"] {
+        width: auto !important;
+        flex: none !important;
+        min-width: unset !important;
+    }
+
     /* FORCE BLUE BUTTON (PRIMARY TYPE) */
     .stButton > button[kind="primary"] {
         background-color: #2563eb !important;
@@ -408,8 +423,8 @@ uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="col
 
 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-# BUTTONS IN INLINE CONTAINER
-btn_col1, btn_col2, _ = st.columns([1, 1, 6])
+# BUTTONS CONTAINER (CLOSE GAP - FLEXBOX)
+btn_col1, btn_col2 = st.columns(2)
 
 with btn_col1:
     btn_process = st.button("🔗 Process Sheet", type="primary", use_container_width=False)
