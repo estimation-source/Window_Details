@@ -14,7 +14,7 @@ from openpyxl.utils import get_column_letter
 # 1. Page Config
 # ============================================================
 st.set_page_config(
-    page_title="Universal Window Details & Glass SQFT Engine",
+    page_title="Universal Window Details",
     page_icon="🪟",
     layout="wide",
     initial_sidebar_state="expanded"
