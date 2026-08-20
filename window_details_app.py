@@ -279,41 +279,43 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* FORCE BLUE BUTTON (PRIMARY TYPE) */
+    /* FORCE BLUE BUTTON (PRIMARY TYPE) - COMPACT SIZE & NORMAL WEIGHT */
     .stButton > button[kind="primary"] {
         background-color: #2563eb !important;
         background: #2563eb !important;
         border: 1px solid #2563eb !important;
         color: #ffffff !important;
-        border-radius: 8px !important;
-        height: 44px !important;
-        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2) !important;
+        border-radius: 6px !important;
+        height: 38px !important;
+        padding: 0 16px !important;
+        box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2) !important;
     }
     .stButton > button[kind="primary"]:hover {
         background-color: #1d4ed8 !important;
         background: #1d4ed8 !important;
     }
 
-    /* FORCE RED BUTTON (SECONDARY TYPE OVERRIDE) */
+    /* FORCE RED BUTTON (SECONDARY TYPE OVERRIDE) - COMPACT SIZE & NORMAL WEIGHT */
     .stButton > button[kind="secondary"] {
         background-color: #dc2626 !important;
         background: #dc2626 !important;
         border: 1px solid #dc2626 !important;
         color: #ffffff !important;
-        border-radius: 8px !important;
-        height: 44px !important;
-        box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2) !important;
+        border-radius: 6px !important;
+        height: 38px !important;
+        padding: 0 16px !important;
+        box-shadow: 0 1px 2px rgba(220, 38, 38, 0.2) !important;
     }
     .stButton > button[kind="secondary"]:hover {
         background-color: #b91c1c !important;
         background: #b91c1c !important;
     }
 
-    /* TEXT BOLD & WHITE FORCE */
+    /* NORMAL WEIGHT (NOT BOLD) & WHITE TEXT FORCE */
     .stButton > button p, .stButton > button span {
         color: #ffffff !important;
-        font-weight: 800 !important;
-        font-size: 15px !important;
+        font-weight: 500 !important;
+        font-size: 14px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -358,14 +360,14 @@ uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="col
 
 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-# DIRECT BUTTONS WITH NATIVE STREAMLIT TYPES (Primary = Blue, Secondary = Red via CSS)
-btn_col1, btn_col2, _ = st.columns([2.5, 2.5, 5])
+# BUTTONS IN INLINE CONTAINER (AUTO / TEXT SIZE WIDTH)
+btn_col1, btn_col2, _ = st.columns([1, 1, 6])
 
 with btn_col1:
-    btn_process = st.button("🔗 Process Sheet", type="primary", use_container_width=True)
+    btn_process = st.button("🔗 Process Sheet", type="primary", use_container_width=False)
 
 with btn_col2:
-    btn_reset = st.button("🗑️ Reset Data", type="secondary", use_container_width=True)
+    btn_reset = st.button("🗑️ Reset Data", type="secondary", use_container_width=False)
 
 # Reset Logic
 if btn_reset:
