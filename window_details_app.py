@@ -1,16 +1,25 @@
+from __future__ import annotations
+
 import os
 import re
 import base64
 import pandas as pd
+from PIL import Image
 import streamlit as st
 
-# Page Config
+# ============================================================
+# 1. Page Config
+# ============================================================
 st.set_page_config(
-    page_title="Window Details Module",
+    page_title="Universal Window Details & Glass SQFT Engine",
     page_icon="🪟",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Helper Function for File Path
+def get_image_path(filename: str) -> str:
+    return os.path.join(os.path.abspath("."), filename)
 
 # Rule for Special Glass
 def check_special_glass(spec):
@@ -228,7 +237,7 @@ def process_excel_with_mode(file_obj, format_mode):
     return pd.DataFrame(summary), target_sheet
 
 
-# EXACT GLOBAL DASHBOARD CSS
+# EXACT GLOBAL CSS OVERRIDE
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -239,14 +248,19 @@ st.markdown("""
         color: #0f172a !important;
     }
 
+    [data-testid="stSidebar"] {
+        background-color: #f1f5f9 !important;
+        border-right: 1px solid #e2e8f0 !important;
+    }
+
     /* Sidebar Divider Line */
     [data-testid="stSidebar"] hr {
         margin-top: 1rem !important;
         margin-bottom: 1.5rem !important;
-        border-color: #e2e8f0 !important;
+        border-color: #cbd5e1 !important;
     }
     
-    /* Header Card */
+    /* Header Container */
     .header-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -317,12 +331,19 @@ if 'df_result' not in st.session_state:
 if 'sheet_used' not in st.session_state:
     st.session_state['sheet_used'] = None
 
-# Sidebar Matching Module 1 & 2 Layout Exactly
+# =========================================================
+# SIDEBAR (EXACTLY MATCHING MODULE 1 SOURCE LOGO SIZE & LAYOUT)
+# =========================================================
 with st.sidebar:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", width=170)
+    logo_file = get_image_path("logo.png")
+    if os.path.exists(logo_file):
+        col_s1, col_s2, col_s3 = st.columns([1, 2, 1])
+        with col_s2:
+            st.image(Image.open(logo_file), width=110)
+    else:
+        st.markdown("<h2 style='text-align: center; color:#1e293b;'><b>win square</b></h2>", unsafe_allow_html=True)
     
-    st.markdown("---")  # Horizontal Line matching original theme
+    st.markdown("---")
     
     st.markdown("#### ⚙️ Reading Mode Option")
     selected_mode = st.radio(
@@ -344,7 +365,7 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-# Buttons Row - Width & Color Match Original
+# Buttons Row
 st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 col_p, col_r, _ = st.columns([2, 2, 4])
 
