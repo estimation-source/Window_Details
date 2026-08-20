@@ -279,48 +279,41 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* SOLID BLUE BUTTON FOR PROCESS SHEET */
-    div.stButton > button[key="blue_process_btn"],
-    div[data-testid="column"]:nth-of-type(1) div.stButton > button {
+    /* FORCE BLUE BUTTON (PRIMARY TYPE) */
+    .stButton > button[kind="primary"] {
         background-color: #2563eb !important;
         background: #2563eb !important;
         border: 1px solid #2563eb !important;
+        color: #ffffff !important;
         border-radius: 8px !important;
         height: 44px !important;
         box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2) !important;
     }
-    div.stButton > button[key="blue_process_btn"]:hover,
-    div[data-testid="column"]:nth-of-type(1) div.stButton > button:hover {
+    .stButton > button[kind="primary"]:hover {
         background-color: #1d4ed8 !important;
         background: #1d4ed8 !important;
-        border-color: #1d4ed8 !important;
     }
 
-    /* SOLID RED BUTTON FOR RESET DATA */
-    div.stButton > button[key="red_reset_btn"],
-    div[data-testid="column"]:nth-of-type(2) div.stButton > button {
+    /* FORCE RED BUTTON (SECONDARY TYPE OVERRIDE) */
+    .stButton > button[kind="secondary"] {
         background-color: #dc2626 !important;
         background: #dc2626 !important;
         border: 1px solid #dc2626 !important;
+        color: #ffffff !important;
         border-radius: 8px !important;
         height: 44px !important;
         box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2) !important;
     }
-    div.stButton > button[key="red_reset_btn"]:hover,
-    div[data-testid="column"]:nth-of-type(2) div.stButton > button:hover {
+    .stButton > button[kind="secondary"]:hover {
         background-color: #b91c1c !important;
         background: #b91c1c !important;
-        border-color: #b91c1c !important;
     }
 
-    /* FORCE BOLD & WHITE TEXT FOR BOTH BUTTONS */
-    div[data-testid="column"] div.stButton > button p,
-    div[data-testid="column"] div.stButton > button span,
-    div[data-testid="column"] div.stButton > button div {
+    /* TEXT BOLD & WHITE FORCE */
+    .stButton > button p, .stButton > button span {
         color: #ffffff !important;
         font-weight: 800 !important;
         font-size: 15px !important;
-        letter-spacing: 0.3px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -365,14 +358,14 @@ uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="col
 
 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-# DIRECT COLUMNS FOR BUTTONS (NO FORM)
+# DIRECT BUTTONS WITH NATIVE STREAMLIT TYPES (Primary = Blue, Secondary = Red via CSS)
 btn_col1, btn_col2, _ = st.columns([2.5, 2.5, 5])
 
 with btn_col1:
-    btn_process = st.button("🔗 Process Sheet", key="blue_process_btn", use_container_width=True)
+    btn_process = st.button("🔗 Process Sheet", type="primary", use_container_width=True)
 
 with btn_col2:
-    btn_reset = st.button("🗑️ Reset Data", key="red_reset_btn", use_container_width=True)
+    btn_reset = st.button("🗑️ Reset Data", type="secondary", use_container_width=True)
 
 # Reset Logic
 if btn_reset:
