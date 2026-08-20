@@ -21,12 +21,12 @@ def get_base64_image(image_path: str) -> str | None:
 
 logo_b64 = get_base64_image("logo.png")
 
-# Smart Multi-Format Parser (Bug-Free)
+# Smart Block-Layout & Table Parser
 def process_excel_file(file_obj):
     excel_file = pd.ExcelFile(file_obj)
     sheet_names = excel_file.sheet_names
     
-    # 1. Target Sheet Selection
+    # Target Sheet Selection
     target_sheet = None
     for s in sheet_names:
         if "MEASUREMENT" in str(s).upper():
@@ -36,68 +36,92 @@ def process_excel_file(file_obj):
         target_sheet = sheet_names[1] if len(sheet_names) >= 2 else sheet_names[0]
 
     df_raw = pd.read_excel(file_obj, sheet_name=target_sheet, header=None)
-
-    # Convert all values safely to string for text searching
     full_text = " ".join([str(val) for val in df_raw.fillna('').values.flatten()]).upper()
     
     rows = []
 
     # -------------------------------------------------------------------
-    # FORMAT A: VERTICAL BLOCK FORMAT (Sheet2 / WinSquare Quotation Layout)
+    # FORMAT A: VERTICAL BLOCK FORMAT (Quotation Sheets / Sheet2 Layout)
     # -------------------------------------------------------------------
     if "CODE :" in full_text or "CODE:" in full_text or ("WIDTH" in full_text and "SQFT" in full_text):
+        blocks = []
         current_block = {}
-        
+
         for idx, row in df_raw.iterrows():
-            row_vals = [str(val).strip() for val in row.values if pd.notna(val) and str(val).strip() != "nan"]
+            # Get non-empty values
+            row_vals = [str(val).strip() for val in row.values if pd.notna(val) and str(val).strip() != "nan" and str(val).strip() != ""]
             row_str = " ".join(row_vals)
-            
-            # Detect Code / Window Name
-            if "CODE :" in row_str.upper() or "CODE:" in row_str.upper():
-                if current_block.get('SQFT'):
-                    rows.append(current_block)
-                current_block = {
-                    'Window Code / Type': '',
-                    'Width (mm)': '-',
-                    'Height (mm)': '-',
-                    'Thickness': '-',
-                    'Glass Specification': '',
-                    'SQFT': 0
-                }
-                
+
+            if not row_vals:
+                continue
+
+            # Detect New Window Block (CODE :)
+            if re.search(r'CODE\s*:', row_str, re.IGNORECASE):
+                if current_block.get('SQFT') or current_block.get('Code'):
+                    blocks.append(current_block)
+                current_block = {'Code': '', 'Name': '', 'Glass': '', 'Width': '-', 'Height': '-', 'Thickness': '-', 'SQFT': 0}
+
                 match = re.search(r'CODE\s*:\s*([A-Za-z0-9_\-]+)', row_str, re.IGNORECASE)
                 if match:
-                    current_block['Window Code / Type'] = match.group(1)
-            
-            if "NAME :" in row_str.upper() or "NAME:" in row_str.upper():
-                match_name = re.search(r'NAME\s*:\s*(.*)', row_str, re.IGNORECASE)
-                if match_name:
-                    name_val = match_name.group(1).split("LOCATION")[0].strip()
-                    if current_block.get('Window Code / Type'):
-                        current_block['Window Code / Type'] += f" - {name_val}"
-                    else:
-                        current_block['Window Code / Type'] = name_val
+                    current_block['Code'] = match.group(1).strip()
 
-            # Detect Glass Specification
-            if "GLASS :" in row_str.upper() or "GLASS:" in row_str.upper():
-                match_glass = re.search(r'GLASS\s*:\s*(.*)', row_str, re.IGNORECASE)
-                if match_glass:
-                    current_block['Glass Specification'] = match_glass.group(1).strip()
+            # Detect Name
+            if re.search(r'NAME\s*:', row_str, re.IGNORECASE):
+                match = re.search(r'NAME\s*:\s*(.*?)(?=Profile System|Size|Location|$)', row_str, re.IGNORECASE)
+                if match:
+                    current_block['Name'] = match.group(1).strip()
 
-            # Detect Width, Height, SQFT
+            # Detect Glass
+            if re.search(r'GLASS\s*:', row_str, re.IGNORECASE):
+                match = re.search(r'GLASS\s*:\s*(.*)', row_str, re.IGNORECASE)
+                if match:
+                    glass_val = match.group(1).strip()
+                    current_block['Glass'] = glass_val
+                    # Extract Thickness if specified (e.g. 20mm, 5mm)
+                    thick_match = re.search(r'(\d+\s*MM(?:\s*DGU)?)', glass_val, re.IGNORECASE)
+                    if thick_match:
+                        current_block['Thickness'] = thick_match.group(1).strip()
+
+            # Detect Width, Height, SQFT line-by-line
             for i, val in enumerate(row_vals):
-                val_upper = str(val).upper()
-                if "WIDTH" in val_upper and i + 1 < len(row_vals):
-                    current_block['Width (mm)'] = pd.to_numeric(row_vals[i+1], errors='coerce')
-                elif "HEIGHT" in val_upper and i + 1 < len(row_vals):
-                    current_block['Height (mm)'] = pd.to_numeric(row_vals[i+1], errors='coerce')
-                elif "SQFT" in val_upper and i + 1 < len(row_vals):
-                    sq_val = pd.to_numeric(row_vals[i+1], errors='coerce')
-                    if pd.notna(sq_val):
-                        current_block['SQFT'] = sq_val
+                val_u = val.upper()
+                if val_u == "WIDTH" or "WIDTH" in val_u:
+                    # Look ahead in same row for number
+                    nums = [re.sub(r'[^0-9.]', '', x) for x in row_vals[i+1:] if re.sub(r'[^0-9.]', '', x)]
+                    if nums:
+                        current_block['Width'] = pd.to_numeric(nums[0], errors='coerce')
+                
+                elif val_u == "HEIGHT" or "HEIGHT" in val_u:
+                    nums = [re.sub(r'[^0-9.]', '', x) for x in row_vals[i+1:] if re.sub(r'[^0-9.]', '', x)]
+                    if nums:
+                        current_block['Height'] = pd.to_numeric(nums[0], errors='coerce')
 
-        if current_block.get('SQFT'):
-            rows.append(current_block)
+                elif val_u == "SQFT" or "SQFT" in val_u:
+                    nums = [re.sub(r'[^0-9.]', '', x) for x in row_vals[i+1:] if re.sub(r'[^0-9.]', '', x)]
+                    if nums:
+                        sq_val = pd.to_numeric(nums[0], errors='coerce')
+                        if pd.notna(sq_val):
+                            current_block['SQFT'] = sq_val
+
+        if current_block.get('SQFT') or current_block.get('Code'):
+            blocks.append(current_block)
+
+        # Map blocks to output table structure
+        for b in blocks:
+            code_name = b.get('Code', '')
+            if b.get('Name'):
+                code_name = f"{code_name} - {b['Name']}" if code_name else b['Name']
+            
+            sqft_val = b.get('SQFT', 0)
+            if sqft_val > 0:
+                rows.append({
+                    'Window Code / Type': code_name if code_name else "Window",
+                    'Width (mm)': b.get('Width', '-'),
+                    'Height (mm)': b.get('Height', '-'),
+                    'Thickness': b.get('Thickness', '-'),
+                    'Glass Specification': b.get('Glass', ''),
+                    'SQFT': sqft_val
+                })
 
     # -------------------------------------------------------------------
     # FORMAT B: HORIZONTAL TABLE FORMAT (Measurement Sheet Layout)
@@ -139,7 +163,7 @@ def process_excel_file(file_obj):
                 'SQFT': sqft
             })
 
-    # Processing Output Table Logic
+    # Final DataFrame Processing
     df_clean = pd.DataFrame(rows)
     if df_clean.empty:
         return pd.DataFrame(), target_sheet
@@ -163,7 +187,6 @@ def process_excel_file(file_obj):
         sample_w = group['Width (mm)'].iloc[0]
         sample_h = group['Height (mm)'].iloc[0]
         
-        # Safe string joining for thickness & glass specs
         thick_vals = [str(t) for t in group['Thickness'].unique() if str(t).strip() not in ["", "-", "nan"]]
         thick_type = ", ".join(thick_vals) if thick_vals else "-"
         
