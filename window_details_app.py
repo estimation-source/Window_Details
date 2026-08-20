@@ -20,110 +20,101 @@ def get_base64_image(image_path: str) -> str | None:
 
 logo_b64 = get_base64_image("logo.png")
 
-# Data Processing Function
-def process_measurement_sheet(file_obj) -> pd.DataFrame:
-    # 1. Excel शीट लोड करा आणि 'MEASUREMENT' किंवा 2nd sheet शोधा
+# Smart & Safe Measurement Sheet Parser
+def process_measurement_sheet(file_obj):
     excel_file = pd.ExcelFile(file_obj)
     sheet_names = excel_file.sheet_names
     
+    # 1. Target Sheet Selection
     target_sheet = None
     for s in sheet_names:
         if "MEASUREMENT" in s.upper():
             target_sheet = s
             break
-    
     if not target_sheet:
-        if len(sheet_names) >= 2:
-            target_sheet = sheet_names[1]  # 2nd Sheet
-        else:
-            target_sheet = sheet_names[0]
+        target_sheet = sheet_names[1] if len(sheet_names) >= 2 else sheet_names[0]
 
-    # Read sheet without strictly enforcing single header
-    df_raw = pd.read_excel(file_obj, sheet_name=target_sheet)
+    # Read raw data without assuming top row as header
+    df_raw = pd.read_excel(file_obj, sheet_name=target_sheet, header=None)
 
-    # Clean Multi-level or Merged Headers
-    # Find the header row where "WINDOW" or "PROFILE" or "SL.NO" exists
-    header_idx = 0
-    for idx, row in df_raw.head(10).iterrows():
-        row_str = " ".join([str(val).upper() for val in row.values])
-        if "WINDOW" in row_str or "AREA" in row_str or "WIDTH" in row_str:
-            header_idx = idx
+    # 2. Find actual data starting row (where S.NO / numbers start)
+    start_row = 0
+    for idx, row in df_raw.iterrows():
+        # Check if first/second column has numeric S.NO (e.g. 1, 2, 3...)
+        val0 = str(row[0]).strip()
+        val1 = str(row[1]).strip()
+        if val0.isdigit() or val1.isdigit():
+            start_row = idx
             break
 
-    df = pd.read_excel(file_obj, sheet_name=target_sheet, header=header_idx)
-    
-    # Clean Column Names
-    df.columns = [str(c).replace('\n', ' ').strip() for c in df.columns]
+    # Extract Data Rows
+    df_data = df_raw.iloc[start_row:].copy().reset_index(drop=True)
 
-    # Map necessary columns dynamically
-    win_col = None
-    width_col = None
-    height_col = None
-    sqft_col = None
-    glass_col = None
-    qty_col = None
-
-    for col in df.columns:
-        c_upper = col.upper()
-        if "WINDOW" in c_upper or "TYPE" in c_upper or "LOCATION" in c_upper:
-            if not win_col: win_col = col
-        elif "WIDTH" in c_upper:
-            width_col = col
-        elif "HEIGHT" in c_upper:
-            height_col = col
-        elif "SQ" in c_upper or "AREA" in c_upper:
-            sqft_col = col
-        elif "SPECE" in c_upper or "GLASS" in c_upper or "THICKNESS" in c_upper:
-            glass_col = col
-        elif "QTY" in c_upper or "NOS" in c_upper:
-            qty_col = col
-
-    # Fallbacks for critical columns
-    win_col = win_col if win_col else df.columns[2]
-    sqft_col = sqft_col if sqft_col else df.columns[7]
-    glass_col = glass_col if glass_col else df.columns[-1]
-
-    # Filter out invalid/empty rows
-    df[sqft_col] = pd.to_numeric(df[sqft_col], errors='coerce')
-    df = df.dropna(subset=[sqft_col])
-    df = df[df[sqft_col] > 0]
-
-    # Rule: Detect "Frosted Toughened" / "Special Glass" (Ignore plain "Frosted")
-    def is_special_glass(val):
-        text = str(val).lower()
-        if "frosted toughened" in text or "frosted toughen" in text or "special" in text:
-            return True
-        return False
-
-    df['Is_Special'] = df[glass_col].apply(is_special_glass)
-
-    # Process and Aggregate Window Wise Data
-    summary_list = []
-    grouped = df.groupby(win_col)
-
-    for win_name, group in grouped:
-        all_window_sqft = group[sqft_col].sum()
-        special_glass_sqft = group[group['Is_Special']][sqft_col].sum()
+    rows = []
+    for _, row in df_data.iterrows():
+        # Column mappings based on standard MEASUREMENT sheet layout
+        # Col 0: S.NO, Col 1: FLAT NO, Col 2: WINDOW TYPE, Col 3: LOCATION
+        # Col 5: Width, Col 6: Height, Col 7: Area Sq.Ft
+        # Col 11: Glass / Flymesh Spec
         
-        # Dimensions and Spec representation
-        sample_w = group[width_col].iloc[0] if width_col in group.columns else "-"
-        sample_h = group[height_col].iloc[0] if height_col in group.columns else "-"
-        sample_qty = len(group)
-        glass_type = ", ".join(group[glass_col].astype(str).unique())
+        win_type = str(row[2]).strip() if pd.notna(row[2]) else ""
+        location = str(row[3]).strip() if pd.notna(row[3]) else ""
+        
+        # Combine Window Type + Location for unique identifier
+        window_name = f"{win_type} ({location})" if location and location != "nan" else win_type
+        if not window_name or window_name == "nan":
+            continue
 
-        summary_list.append({
-            'Window Type / Code': str(win_name),
-            'Width (mm)': sample_w,
-            'Height (mm)': sample_h,
-            'Qty': sample_qty,
-            'Glass Specification': glass_type,
-            'ALL Window SQFT': round(all_window_sqft, 2),
-            'Special glass SQFT': round(special_glass_sqft, 2)
+        width = pd.to_numeric(row[5], errors='coerce')
+        height = pd.to_numeric(row[6], errors='coerce')
+        sqft = pd.to_numeric(row[7], errors='coerce')
+        glass_spec = str(row[11]).strip() if pd.notna(row[11]) else ""
+
+        # Ignore invalid/summary rows
+        if pd.isna(sqft) or sqft <= 0:
+            continue
+
+        # Rule for Special Glass: Check "frosted toughened" (Ignore plain frosted)
+        glass_lower = glass_spec.lower()
+        is_special = ("frosted" in glass_lower and "toughened" in glass_lower) or ("satin toughened" in glass_lower)
+
+        rows.append({
+            'Window Code / Type': window_name,
+            'Width (mm)': width if pd.notna(width) else "-",
+            'Height (mm)': height if pd.notna(height) else "-",
+            'Glass Specification': glass_spec,
+            'SQFT': sqft,
+            'Is_Special': is_special
         })
 
-    return pd.DataFrame(summary_list), target_sheet
+    df_clean = pd.DataFrame(rows)
 
-# Custom UI
+    if df_clean.empty:
+        return pd.DataFrame(), target_sheet
+
+    # Group by Window Code/Type
+    summary = []
+    for win_code, group in df_clean.groupby('Window Code / Type'):
+        all_sqft = group['SQFT'].sum()
+        special_sqft = group[group['Is_Special']]['SQFT'].sum()
+        
+        sample_w = group['Width (mm)'].iloc[0]
+        sample_h = group['Height (mm)'].iloc[0]
+        glass_type = ", ".join([g for g in group['Glass Specification'].unique() if g])
+
+        summary.append({
+            'Window Code / Type': win_code,
+            'Width (mm)': sample_w,
+            'Height (mm)': sample_h,
+            'Qty': len(group),
+            'Glass Specification': glass_type if glass_type else "Standard",
+            'ALL Window SQFT': round(all_sqft, 2),
+            'Special glass SQFT': round(special_sqft, 2)
+        })
+
+    return pd.DataFrame(summary), target_sheet
+
+# Custom UI CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -141,12 +132,6 @@ st.markdown("""
     }
     .main-title { font-size: 22px !important; font-weight: 800 !important; color: #0f172a; }
     .main-subtitle { font-size: 13px !important; color: #64748b; }
-    div.stButton > button[kind="primary"] {
-        background: #2563eb !important;
-        border: none !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -155,13 +140,13 @@ with st.sidebar:
     if logo_b64:
         st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="width:140px;">', unsafe_allow_html=True)
     st.markdown("### 🪟 Window Details Module")
-    st.caption("Reads MEASUREMENT / 2nd Sheet to process Window SQFT & Special Frosted Toughened Glass SQFT.")
+    st.caption("Reads MEASUREMENT Sheet (ALL Window SQFT & Special Glass SQFT)")
 
 # Header
 st.markdown("""
     <div class="header-container">
         <div class="main-title">Window Details & Glass SQFT Engine</div>
-        <div class="main-subtitle">Automated Reader for 'MEASUREMENT' Sheet (ALL Window SQFT & Special Glass SQFT)</div>
+        <div class="main-subtitle">Automated Reader for 'MEASUREMENT' Sheet</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -174,22 +159,25 @@ if uploaded_file:
         
         st.success(f"Successfully processed sheet: **'{sheet_used}'**")
         
-        st.markdown("### 📑 Window Details Output Table")
-        st.dataframe(result_df, use_container_width=True)
+        if not result_df.empty:
+            st.markdown("### 📑 Window Details Output Table")
+            st.dataframe(result_df, use_container_width=True)
 
-        # Totals Display Cards
-        st.markdown("<br>", unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        
-        total_all_sqft = result_df["ALL Window SQFT"].sum()
-        total_special_sqft = result_df["Special glass SQFT"].sum()
+            # Metrics
+            st.markdown("<br>", unsafe_allow_html=True)
+            c1, c2, c3 = st.columns(3)
+            
+            tot_all = result_df["ALL Window SQFT"].sum()
+            tot_spec = result_df["Special glass SQFT"].sum()
 
-        with c1:
-            st.metric("Total Window Types", len(result_df))
-        with c2:
-            st.metric("Total ALL Window SQFT", f"{total_all_sqft:,.2f} sqft")
-        with c3:
-            st.metric("Total Special Glass SQFT (Frosted Toughened)", f"{total_special_sqft:,.2f} sqft")
+            with c1:
+                st.metric("Total Window Types", len(result_df))
+            with c2:
+                st.metric("Total ALL Window SQFT", f"{tot_all:,.2f} sqft")
+            with c3:
+                st.metric("Total Special Glass SQFT", f"{tot_spec:,.2f} sqft")
+        else:
+            st.warning("No valid measurement rows found in the sheet. Please check the Excel file.")
 
     except Exception as e:
         st.error(f"Error parsing sheet: {str(e)}")
