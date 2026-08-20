@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import os
 import re
@@ -14,7 +15,7 @@ from openpyxl.utils import get_column_letter
 # 1. Page Config
 # ============================================================
 st.set_page_config(
-    page_title="Universal Window Details",
+    page_title="Winsquare MIS Dashboard",
     page_icon="🪟",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -23,6 +24,13 @@ st.set_page_config(
 # Helper Function for File Path
 def get_image_path(filename: str) -> str:
     return os.path.join(os.path.abspath("."), filename)
+
+# Helper to encode local image to base64 string
+def get_base64_image(image_path: str) -> str:
+    if os.path.exists(image_path):
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
 
 # Rule for Special Glass
 def check_special_glass(spec):
@@ -258,24 +266,119 @@ st.markdown("""
         border-right: 1px solid #e2e8f0 !important;
     }
 
-    /* Header Card */
-    .header-card {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
+    /* DASHBOARD TOP BANNER HEADER (EXACTLY LIKE SCREENSHOT) */
+    .dashboard-header {
+        background-color: #172133;
         border-radius: 12px;
         padding: 24px 32px;
         margin-bottom: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
-    .main-title {
-        font-size: 22px !important;
+
+    .dashboard-title-container {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dashboard-main-title {
+        font-size: 24px !important;
         font-weight: 800 !important;
-        color: #0f172a;
-        margin-bottom: 4px;
+        color: #ffffff !important;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
-    .main-subtitle {
-        font-size: 13px !important;
+
+    .dashboard-subtitle {
+        font-size: 12px !important;
+        color: #94a3b8 !important;
+        margin-top: 6px;
+    }
+
+    .dashboard-logo-container {
+        background: #ffffff;
+        padding: 8px 12px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 90px;
+        height: 48px;
+    }
+
+    .dashboard-logo-container img {
+        max-height: 32px;
+        width: auto;
+        object-fit: contain;
+    }
+
+    /* MODULE DASHBOARD CARDS GRID */
+    .modules-container {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .module-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        height: 100%;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .module-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+    }
+
+    .module-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 16px;
+        font-size: 18px;
+    }
+
+    .icon-blue { background: #eff6ff; color: #2563eb; }
+    .icon-green { background: #f0fdf4; color: #16a34a; }
+    .icon-purple { background: #faf5ff; color: #9333ea; }
+
+    .module-title {
+        font-size: 15px !important;
+        font-weight: 700 !important;
+        color: #0f172a;
+        margin-bottom: 8px;
+    }
+
+    .module-desc {
+        font-size: 12px !important;
         color: #64748b;
+        line-height: 1.5;
+        margin-bottom: 20px;
+    }
+
+    .module-link {
+        font-size: 13px !important;
+        font-weight: 600;
+        color: #2563eb;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
     }
 
     .step-header {
@@ -309,7 +412,7 @@ st.markdown("""
         margin-top: 6px;
     }
 
-    /* FORCE BLUE BUTTON (PRIMARY TYPE) */
+    /* BUTTON STYLES */
     .stButton > button[kind="primary"] {
         background-color: #2563eb !important;
         background: #2563eb !important;
@@ -326,7 +429,6 @@ st.markdown("""
         background: #1d4ed8 !important;
     }
 
-    /* FORCE RED BUTTON (SECONDARY TYPE OVERRIDE) */
     .stButton > button[kind="secondary"] {
         background-color: #dc2626 !important;
         background: #dc2626 !important;
@@ -343,7 +445,6 @@ st.markdown("""
         background: #b91c1c !important;
     }
 
-    /* DOWNLOAD GREEN BUTTON */
     div.stDownloadButton > button {
         background-color: #059669 !important;
         background: #059669 !important;
@@ -395,11 +496,53 @@ with st.sidebar:
         help="Choose Option 1 for MEASUREMENT horizontal table sheet, Option 2 for WinSquare Quotation block sheet."
     )
 
-# Header Card
+# Prepare Base64 Logo for Top Header
+logo_b64 = get_base64_image(get_image_path("logo.png"))
+logo_html = f'<img src="data:image/png;base64,{logo_b64}" alt="win square"/>' if logo_b64 else '<span style="font-weight:bold; color:#1e293b;">win square</span>'
+
+# Header Card Dashboard (As per provided Screenshot)
+st.markdown(f"""
+    <div class="dashboard-header">
+        <div class="dashboard-title-container">
+            <div class="dashboard-main-title">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                Winsquare MIS DASHBOARD
+            </div>
+            <div class="dashboard-subtitle">Central Gateway for Processing, BOQ Extraction & Project Management Modules</div>
+        </div>
+        <div class="dashboard-logo-container">
+            {logo_html}
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+# 3 Modules Cards Grid (As per provided Screenshot)
 st.markdown("""
-    <div class="header-card">
-        <div class="main-title">Universal Window Details</div>
-        <div class="main-subtitle">Supports Measurement Sheets, Quotation Sheets & Block Layouts</div>
+    <div class="modules-container">
+        <div class="module-card">
+            <div>
+                <div class="module-icon icon-blue">📊</div>
+                <div class="module-title">Requirement Sheet Engine</div>
+                <div class="module-desc">Multi-sheet BOQ Excel processing, automatic non-frosted glass extraction, SQFT auto-calculation, and official requirement sheet generation.</div>
+            </div>
+            <a href="#" class="module-link">Launch Module &rarr;</a>
+        </div>
+        <div class="module-card">
+            <div>
+                <div class="module-icon icon-green">🪟</div>
+                <div class="module-title">Window Details</div>
+                <div class="module-desc">Comprehensive window codes directory, profile specifications, hardware details, and component level breakdowns.</div>
+            </div>
+            <a href="#" class="module-link">Launch Module &rarr;</a>
+        </div>
+        <div class="module-card">
+            <div>
+                <div class="module-icon icon-purple">📄</div>
+                <div class="module-title">Glass & PI Verification</div>
+                <div class="module-desc">Glass Proforma Invoice verification, quantity cross-checks, rate validation system, and automated mismatch detection.</div>
+            </div>
+            <a href="#" class="module-link">Launch Module &rarr;</a>
+        </div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -481,7 +624,6 @@ if st.session_state['df_result'] is not None:
             st.dataframe(res_df, use_container_width=True, hide_index=True)
 
         with tab2:
-            # File / OC Summary Table
             file_summary = (
                 df_raw_c.groupby("SourceFile", as_index=False)
                 .agg(
@@ -495,7 +637,6 @@ if st.session_state['df_result'] is not None:
             st.dataframe(file_summary, use_container_width=True, hide_index=True)
 
         with tab3:
-            # Glass Type Breakdown Table
             glass_summary = (
                 df_raw_c.groupby("Glass Specification", as_index=False)
                 .agg(
@@ -564,12 +705,12 @@ if st.session_state['df_result'] is not None:
         excel_bytes = output.getvalue()
 
         st.markdown("<br>", unsafe_allow_html=True)
-        #st.download_button(
-        #    label="📥 DOWNLOAD WINDOW DETAILS SHEET (.XLSX)",
-        #    data=excel_bytes,
-        #    file_name="WINDOW_DETAILS_SUMMARY.xlsx",
-        #    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        #    use_container_width=False
-        #)
+        st.download_button(
+            label="📥 DOWNLOAD WINDOW DETAILS SHEET (.XLSX)",
+            data=excel_bytes,
+            file_name="WINDOW_DETAILS_SUMMARY.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=False
+        )
     else:
         st.warning("No valid window rows found in the sheet. Please check the selected Reading Mode Option in sidebar.")
