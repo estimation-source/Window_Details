@@ -87,7 +87,6 @@ def parse_quotation_block_sheet(file_obj, sheet_name):
         row_vals = [str(val).strip() for val in df_raw.iloc[r].values if pd.notna(val) and str(val).strip() != "nan"]
         row_str = " ".join(row_vals)
 
-        # Detect Start of Block
         if "CODE :" in row_str.upper() or "CODE:" in row_str.upper():
             code_val = ""
             name_val = ""
@@ -97,24 +96,20 @@ def parse_quotation_block_sheet(file_obj, sheet_name):
             sqft_val = 0
             thick_val = "-"
 
-            # Code
             code_match = re.search(r'CODE\s*:\s*([A-Za-z0-9_\-]+)', row_str, re.IGNORECASE)
             if code_match:
                 code_val = code_match.group(1).strip()
 
-            # Scan up to 25 rows below
             for r_offset in range(r, min(r + 25, num_rows)):
                 sub_row = df_raw.iloc[r_offset]
                 sub_vals = [str(v).strip() for v in sub_row.values if pd.notna(v) and str(v).strip() != "nan"]
                 sub_str = " ".join(sub_vals)
 
-                # Name
                 if ("NAME :" in sub_str.upper() or "NAME:" in sub_str.upper()) and not name_val:
                     m = re.search(r'NAME\s*:\s*(.*?)(?=Profile System|Size|Location|$)', sub_str, re.IGNORECASE)
                     if m:
                         name_val = m.group(1).strip()
 
-                # Glass
                 if ("GLASS :" in sub_str.upper() or "GLASS:" in sub_str.upper()) and not glass_val:
                     m = re.search(r'GLASS\s*:\s*(.*)', sub_str, re.IGNORECASE)
                     if m:
@@ -123,7 +118,6 @@ def parse_quotation_block_sheet(file_obj, sheet_name):
                         if tm:
                             thick_val = tm.group(1).strip()
 
-                # Width, Height, SQFT
                 for c in range(len(sub_row)):
                     cell_txt = str(sub_row.iloc[c]).strip().upper()
                     
@@ -243,7 +237,7 @@ def process_excel_with_mode(file_obj, format_mode):
     return pd.DataFrame(summary), target_sheet
 
 
-# Strict UI Styling Matching Dashboard
+# EXACT ORIGINAL UI CSS OVERRIDE
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -259,7 +253,7 @@ st.markdown("""
         background: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
-        padding: 16px;
+        padding: 12px;
         display: flex;
         justify-content: center;
         align-items: center;
@@ -267,7 +261,7 @@ st.markdown("""
         box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
     .sidebar-logo-img {
-        max-width: 130px;
+        max-width: 120px;
         height: auto;
         display: block;
         margin: 0 auto;
@@ -300,32 +294,40 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* Target Specific Buttons */
-    div.stButton > button {
+    /* FORCE FULL-WIDTH SOLID BUTTON STYLING */
+    div[data-testid="column"] button {
+        width: 100% !important;
+        height: 44px !important;
         border-radius: 8px !important;
-        padding: 10px 16px !important;
         font-weight: 600 !important;
         font-size: 14px !important;
-        width: 100% !important;
         border: none !important;
         cursor: pointer !important;
-        transition: all 0.2s ease !important;
+        box-shadow: none !important;
     }
 
-    .btn-blue > button {
+    /* Blue Process Button */
+    div.btn-blue button {
         background-color: #2563eb !important;
-        color: white !important;
+        color: #ffffff !important;
     }
-    .btn-blue > button:hover {
+    div.btn-blue button:hover {
         background-color: #1d4ed8 !important;
     }
-
-    .btn-red > button {
-        background-color: #dc2626 !important;
-        color: white !important;
+    div.btn-blue button * {
+        color: #ffffff !important;
     }
-    .btn-red > button:hover {
+
+    /* Red Reset Button */
+    div.btn-red button {
+        background-color: #dc2626 !important;
+        color: #ffffff !important;
+    }
+    div.btn-red button:hover {
         background-color: #b91c1c !important;
+    }
+    div.btn-red button * {
+        color: #ffffff !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -365,18 +367,18 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-# Button Layout
-st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
-col_p, col_r, _ = st.columns([1.2, 1.2, 3.6])
+# Button Layout Matching Original Dashboard Spacing
+st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
+col_p, col_r, _ = st.columns([2.2, 2.2, 3.6])
 
 with col_p:
     st.markdown('<div class="btn-blue">', unsafe_allow_html=True)
-    btn_process = st.button("🔗 Process Sheet", key="process_btn")
+    btn_process = st.button("🔗 Process Sheet", key="btn_process_sheet")
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col_r:
     st.markdown('<div class="btn-red">', unsafe_allow_html=True)
-    btn_reset = st.button("🗑️ Reset Data", key="reset_btn")
+    btn_reset = st.button("🗑️ Reset Data", key="btn_reset_sheet")
     st.markdown('</div>', unsafe_allow_html=True)
 
 # Reset Logic
