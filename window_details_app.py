@@ -2,10 +2,9 @@ import os
 import sys
 import base64
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 
-# Page Config (Requirement Sheet UI Theme)
+# Page Configuration
 st.set_page_config(
     page_title="Window Details | Glass Calculator",
     page_icon="🪟",
@@ -28,43 +27,46 @@ def calculate_window_sqft(df: pd.DataFrame) -> pd.DataFrame:
     """
     Window Code/Name प्रमाणे Total Sqft, Frosted Sqft आणि Non-Frosted Sqft कॅल्क्युलेट करतो.
     """
-    # Column matching safe check
     col_map = {}
     for col in df.columns:
         c_lower = str(col).strip().lower()
-        if "window" in c_lower or "tag" in c_lower or "item" in c_lower or "code" in c_lower:
+        if any(k in c_lower for k in ["window", "tag", "item", "code", "win"]):
             col_map['window'] = col
-        elif "sqft" in c_lower or "area" in c_lower or "total area" in c_lower:
+        elif any(k in c_lower for k in ["sqft", "area", "sq.ft", "sq ft"]):
             col_map['sqft'] = col
-        elif "spec" in c_lower or "glass" in c_lower or "description" in c_lower or "type" in c_lower:
+        elif any(k in c_lower for k in ["spec", "glass", "description", "type", "frosted"]):
             col_map['spec'] = col
 
-    # Fallback default columns
+    # Fallbacks if column names don't match standard keywords
     win_col = col_map.get('window', df.columns[0])
     sqft_col = col_map.get('sqft', df.columns[1] if len(df.columns) > 1 else df.columns[0])
     spec_col = col_map.get('spec', df.columns[2] if len(df.columns) > 2 else df.columns[0])
 
-    # Convert numeric values cleanly
-    df[sqft_col] = pd.to_numeric(df[sqft_col], errors='coerce').fillna(0)
+    # Clean data
+    df_clean = df.copy()
+    df_clean[sqft_col] = pd.to_numeric(df_clean[sqft_col], errors='coerce').fillna(0)
+    df_clean['Is_Frosted'] = df_clean[spec_col].astype(str).str.lower().str.contains('frost|frosted|satin|etched|opaque')
 
-    # Frosted flag detection
-    df['Is_Frosted'] = df[spec_col].astype(str).str.lower().str.contains('frost|frosted|satin|etched|opaque')
-
-    # Aggregation
-    grouped = df.groupby(win_col).apply(
-        lambda g: pd.Series({
-            'Total OC Sqft': g[sqft_col].sum(),
-            'Frosted Sqft': g[g['Is_Frosted']][sqft_col].sum(),
-            'Non-Frosted Sqft': g[~g['Is_Frosted']][sqft_col].sum(),
-            'Total Items/Panels': len(g)
+    # Safe GroupBy Calculation
+    records = []
+    for win_name, group in df_clean.groupby(win_col):
+        tot_sqft = group[sqft_col].sum()
+        frosted_sqft = group[group['Is_Frosted']][sqft_col].sum()
+        non_frosted_sqft = group[~group['Is_Frosted']][sqft_col].sum()
+        
+        records.append({
+            'Window Code / Name': str(win_name),
+            'Total OC Sqft': round(tot_sqft, 2),
+            'Frosted Sqft': round(frosted_sqft, 2),
+            'Non-Frosted Sqft': round(non_frosted_sqft, 2),
+            'Total Panels': len(group)
         })
-    ).reset_index()
 
-    grouped.rename(columns={win_col: 'Window Code / Name'}, inplace=True)
-    return grouped
+    result_df = pd.DataFrame(records)
+    return result_df
 
 # ============================================================
-# CUSTOM CLEAN UI CSS (REQUIREMENT SHEET ENGINE LOOK)
+# CUSTOM UI CSS
 # ============================================================
 st.markdown("""
     <style>
@@ -90,7 +92,6 @@ st.markdown("""
         font-size: 22px !important;
         font-weight: 800 !important;
         margin: 0 0 6px 0 !important;
-        letter-spacing: -0.3px;
     }
 
     .main-subtitle {
@@ -106,9 +107,6 @@ st.markdown("""
         font-weight: 700;
         margin-top: 10px;
         margin-bottom: 12px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
     }
 
     div.stButton > button[kind="primary"] {
@@ -123,7 +121,6 @@ st.markdown("""
         width: 140px;
         height: auto;
         margin-bottom: 20px;
-        object-fit: contain;
     }
 
     [data-testid="stHeader"] { display: none; }
@@ -156,7 +153,7 @@ st.markdown("""
 # ============================================================
 # FILE UPLOAD
 # ============================================================
-st.markdown('<div class="step-heading">📁 Step 1: Upload BOQ / Window Schedule Excel Sheet</div>', unsafe_allow_html=True)
+st.markdown('<div class="step-heading">📁 Upload BOQ / Window Schedule Excel Sheet</div>', unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader(
     "Upload BOQ Excel file",
@@ -167,7 +164,6 @@ uploaded_file = st.file_uploader(
 if uploaded_file:
     try:
         raw_df = pd.read_excel(uploaded_file)
-        
         st.success(f"File uploaded successfully! Loaded {len(raw_df)} rows.")
         
         with st.expander("📄 View Raw Excel File", expanded=False):
@@ -184,7 +180,7 @@ if uploaded_file:
 # ============================================================
 # RESULT DASHBOARD & SUMMARY
 # ============================================================
-if "window_result" in st.session_state:
+if "window_result" in st.session_state and not st.session_state["window_result"].empty:
     res_df = st.session_state["window_result"]
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -234,17 +230,8 @@ if "window_result" in st.session_state:
     st.markdown("### 📑 Window-Wise Breakdown Table")
     st.dataframe(res_df, use_container_width=True, height=350)
 
-    # Visualization
+    # Built-in Chart
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📈 Top Windows by Square Feet Area")
-
-    fig = px.bar(
-        res_df.sort_values(by="Total OC Sqft", ascending=False).head(10),
-        x="Window Code / Name",
-        y=["Non-Frosted Sqft", "Frosted Sqft"],
-        title="Top 10 Windows (Frosted vs Non-Frosted Sqft)",
-        barmode="stack",
-        color_discrete_map={"Non-Frosted Sqft": "#3b82f6", "Frosted Sqft": "#eab308"}
-    )
-    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=320)
-    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("### 📈 Windows Area Breakdown Chart")
+    chart_data = res_df.set_index("Window Code / Name")[["Non-Frosted Sqft", "Frosted Sqft"]]
+    st.bar_chart(chart_data)
