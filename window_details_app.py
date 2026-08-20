@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import io
 import os
 import re
+import openpyxl
 import pandas as pd
 from PIL import Image
 import streamlit as st
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 # ============================================================
 # 1. Page Config
@@ -58,7 +62,7 @@ def parse_measurement_sheet(file_obj, sheet_name):
         height = pd.to_numeric(row.iloc[6], errors='coerce') if len(row) > 6 else "-"
         sqft = pd.to_numeric(row.iloc[7], errors='coerce') if len(row) > 7 else 0
         thickness = str(row.iloc[10]).strip() if len(row) > 10 and pd.notna(row.iloc[10]) and str(row.iloc[10]).strip() != "nan" else "-"
-        glass_spec = str(row.iloc[11]).strip() if len(row) > 11 and pd.notna(row.iloc[11]) and str(row.iloc[11]).strip() != "nan" else ""
+        glass_spec = str(row.iloc[11]).strip() if len(row) > 11 and pd.notna(row.iloc[11]) and str(row.iloc[11]).strip() != "nan" else "Standard Glass"
 
         if pd.isna(sqft) or sqft <= 0:
             continue
@@ -69,7 +73,8 @@ def parse_measurement_sheet(file_obj, sheet_name):
             'Height (mm)': height if pd.notna(height) else "-",
             'Thickness': thickness,
             'Glass Specification': glass_spec,
-            'SQFT': sqft
+            'SQFT': sqft,
+            'SourceFile': getattr(file_obj, 'name', 'BOQ File')
         })
 
     return rows
@@ -89,7 +94,7 @@ def parse_quotation_block_sheet(file_obj, sheet_name):
         if "CODE :" in row_str.upper() or "CODE:" in row_str.upper():
             code_val = ""
             name_val = ""
-            glass_val = ""
+            glass_val = "Standard Glass"
             width_val = "-"
             height_val = "-"
             sqft_val = 0
@@ -109,7 +114,7 @@ def parse_quotation_block_sheet(file_obj, sheet_name):
                     if m:
                         name_val = m.group(1).strip()
 
-                if ("GLASS :" in sub_str.upper() or "GLASS:" in sub_str.upper()) and not glass_val:
+                if ("GLASS :" in sub_str.upper() or "GLASS:" in sub_str.upper()) and glass_val == "Standard Glass":
                     m = re.search(r'GLASS\s*:\s*(.*)', sub_str, re.IGNORECASE)
                     if m:
                         glass_val = m.group(1).strip()
@@ -150,7 +155,8 @@ def parse_quotation_block_sheet(file_obj, sheet_name):
                     'Height (mm)': height_val,
                     'Thickness': thick_val,
                     'Glass Specification': glass_val,
-                    'SQFT': sqft_val
+                    'SQFT': sqft_val,
+                    'SourceFile': getattr(file_obj, 'name', 'BOQ File')
                 })
 
     return rows
@@ -204,7 +210,7 @@ def process_excel_with_mode(file_obj, format_mode):
 
     df_clean = pd.DataFrame(parsed_rows)
     if df_clean.empty:
-        return pd.DataFrame(), target_sheet
+        return pd.DataFrame(), pd.DataFrame(), target_sheet
 
     df_clean['Is_Special'] = df_clean['Glass Specification'].apply(check_special_glass)
 
@@ -233,7 +239,7 @@ def process_excel_with_mode(file_obj, format_mode):
             'Special glass SQFT': round(special_sqft, 2)
         })
 
-    return pd.DataFrame(summary), target_sheet
+    return pd.DataFrame(summary), df_clean, target_sheet
 
 
 # PAGE AND ELEMENT STYLING
@@ -279,7 +285,31 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* FORCE BLUE BUTTON (PRIMARY TYPE) - COMPACT SIZE & NORMAL WEIGHT */
+    /* KPI CARDS */
+    .kpi-card-box {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 16px 20px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+
+    .kpi-title-lbl {
+        font-size: 11px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .kpi-val-lbl {
+        font-size: 24px;
+        font-weight: 800;
+        color: #0f172a;
+        margin-top: 6px;
+    }
+
+    /* FORCE BLUE BUTTON (PRIMARY TYPE) */
     .stButton > button[kind="primary"] {
         background-color: #2563eb !important;
         background: #2563eb !important;
@@ -295,7 +325,7 @@ st.markdown("""
         background: #1d4ed8 !important;
     }
 
-    /* FORCE RED BUTTON (SECONDARY TYPE OVERRIDE) - COMPACT SIZE & NORMAL WEIGHT */
+    /* FORCE RED BUTTON (SECONDARY TYPE OVERRIDE) */
     .stButton > button[kind="secondary"] {
         background-color: #dc2626 !important;
         background: #dc2626 !important;
@@ -311,8 +341,24 @@ st.markdown("""
         background: #b91c1c !important;
     }
 
-    /* NORMAL WEIGHT (NOT BOLD) & WHITE TEXT FORCE */
-    .stButton > button p, .stButton > button span {
+    /* DOWNLOAD GREEN BUTTON */
+    div.stDownloadButton > button {
+        background-color: #059669 !important;
+        background: #059669 !important;
+        border: 1px solid #059669 !important;
+        color: #ffffff !important;
+        border-radius: 6px !important;
+        height: 38px !important;
+        padding: 0 16px !important;
+        box-shadow: 0 1px 2px rgba(5, 150, 105, 0.2) !important;
+    }
+    div.stDownloadButton > button:hover {
+        background-color: #047857 !important;
+        background: #047857 !important;
+    }
+
+    .stButton > button p, .stButton > button span,
+    div.stDownloadButton > button p, div.stDownloadButton > button span {
         color: #ffffff !important;
         font-weight: 500 !important;
         font-size: 14px !important;
@@ -323,6 +369,8 @@ st.markdown("""
 # Session State Initializations
 if 'df_result' not in st.session_state:
     st.session_state['df_result'] = None
+if 'df_raw_clean' not in st.session_state:
+    st.session_state['df_raw_clean'] = None
 if 'sheet_used' not in st.session_state:
     st.session_state['sheet_used'] = None
 
@@ -360,7 +408,7 @@ uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="col
 
 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
-# BUTTONS IN INLINE CONTAINER (AUTO / TEXT SIZE WIDTH)
+# BUTTONS IN INLINE CONTAINER
 btn_col1, btn_col2, _ = st.columns([1, 1, 6])
 
 with btn_col1:
@@ -372,6 +420,7 @@ with btn_col2:
 # Reset Logic
 if btn_reset:
     st.session_state['df_result'] = None
+    st.session_state['df_raw_clean'] = None
     st.session_state['sheet_used'] = None
     st.rerun()
 
@@ -380,37 +429,145 @@ if btn_process:
     if uploaded_file is not None:
         try:
             with st.spinner("Processing file..."):
-                df_res, used_sheet = process_excel_with_mode(uploaded_file, selected_mode)
+                df_res, df_raw_c, used_sheet = process_excel_with_mode(uploaded_file, selected_mode)
                 st.session_state['df_result'] = df_res
+                st.session_state['df_raw_clean'] = df_raw_c
                 st.session_state['sheet_used'] = used_sheet
         except Exception as e:
             st.error(f"Error parsing sheet: {str(e)}")
     else:
         st.warning("Please upload an Excel file first.")
 
-# Results Display
+# Results Display & Requirement Sheet Dashboard
 if st.session_state['df_result'] is not None:
     res_df = st.session_state['df_result']
+    df_raw_c = st.session_state['df_raw_clean']
     used_sheet = st.session_state['sheet_used']
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.success(f"Successfully processed sheet: **'{used_sheet}'**")
 
     if not res_df.empty:
-        st.markdown("### 📑 Window Details Output Table")
-        st.dataframe(res_df, use_container_width=True)
+        # Dashboard KPI Cards
+        st.markdown('<div class="step-header">📊 Step 2: Requirement Sheet Dashboard Analytics</div>', unsafe_allow_html=True)
+        
+        tot_types = len(res_df)
+        tot_qty = res_df["Qty"].sum()
+        tot_all_sqft = res_df["ALL Window SQFT"].sum()
+        tot_spec_sqft = res_df["Special glass SQFT"].sum()
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1:
+            st.markdown(f"<div class='kpi-card-box'><div class='kpi-title-lbl'>TOTAL WINDOW TYPES</div><div class='kpi-val-lbl'>{tot_types}</div></div>", unsafe_allow_html=True)
+        with k2:
+            st.markdown(f"<div class='kpi-card-box'><div class='kpi-title-lbl'>TOTAL QUANTITY</div><div class='kpi-val-lbl'>{tot_qty} Pcs</div></div>", unsafe_allow_html=True)
+        with k3:
+            st.markdown(f"<div class='kpi-card-box'><div class='kpi-title-lbl'>TOTAL ALL WINDOW SQFT</div><div class='kpi-val-lbl'>{tot_all_sqft:,.2f}</div></div>", unsafe_allow_html=True)
+        with k4:
+            st.markdown(f"<div class='kpi-card-box'><div class='kpi-title-lbl'>SPECIAL GLASS SQFT</div><div class='kpi-val-lbl'>{tot_spec_sqft:,.2f}</div></div>", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        m1, m2, m3 = st.columns(3)
-        
-        tot_all = res_df["ALL Window SQFT"].sum()
-        tot_spec = res_df["Special glass SQFT"].sum()
 
-        with m1:
-            st.metric("Total Window Types", len(res_df))
-        with m2:
-            st.metric("Total ALL Window SQFT", f"{tot_all:,.2f} sqft")
-        with m3:
-            st.metric("Total Special Glass SQFT", f"{tot_spec:,.2f} sqft")
+        # 3 VIEW TABS
+        tab1, tab2, tab3 = st.tabs([
+            "📄 Window Details Live Preview", 
+            "📊 File / OC Summary", 
+            "🧩 Glass Specification Breakdown"
+        ])
+
+        with tab1:
+            st.dataframe(res_df, use_container_width=True, hide_index=True)
+
+        with tab2:
+            # File / OC Summary Table
+            file_summary = (
+                df_raw_c.groupby("SourceFile", as_index=False)
+                .agg(
+                    Total_Windows=("Window Code / Type", "count"),
+                    Total_SQFT=("SQFT", "sum")
+                )
+            )
+            file_summary["Total_SQFT"] = file_summary["Total_SQFT"].round(2)
+            file_summary.columns = ["Source File / OC Name", "Total Windows (Pcs)", "Total SQFT"]
+            file_summary.insert(0, "Sr. No.", range(1, len(file_summary) + 1))
+            st.dataframe(file_summary, use_container_width=True, hide_index=True)
+
+        with tab3:
+            # Glass Type Breakdown Table
+            glass_summary = (
+                df_raw_c.groupby("Glass Specification", as_index=False)
+                .agg(
+                    Total_Pcs=("Window Code / Type", "count"),
+                    Total_SQFT=("SQFT", "sum")
+                )
+                .sort_values(by="Total_Pcs", ascending=False)
+            )
+            glass_summary["Total_SQFT"] = glass_summary["Total_SQFT"].round(2)
+            glass_summary.columns = ["Glass Specification", "Quantity (Pcs)", "Total SQFT"]
+            glass_summary.insert(0, "Sr. No.", range(1, len(glass_summary) + 1))
+            st.dataframe(glass_summary, use_container_width=True, hide_index=True)
+
+        # Excel Download Functionality (Calibri / Blue Styling)
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "WINDOW DETAILS"
+        ws.views.sheetView[0].showGridLines = True
+
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        data_font = Font(name="Calibri", size=10)
+        total_font = Font(name="Calibri", size=11, bold=True)
+        header_fill = PatternFill(start_color="1F497D", end_color="1F497D", fill_type="solid")
+        total_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        thin_border = Border(
+            left=Side(style="thin", color="D9D9D9"),
+            right=Side(style="thin", color="D9D9D9"),
+            top=Side(style="thin", color="D9D9D9"),
+            bottom=Side(style="thin", color="D9D9D9"),
+        )
+
+        headers = list(res_df.columns)
+        ws.append(headers)
+
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center")
+
+        for row_idx, row in res_df.iterrows():
+            ws.append(list(row))
+            for col_num in range(1, len(headers) + 1):
+                cell = ws.cell(row=row_idx + 2, column=col_num)
+                cell.font = data_font
+                cell.border = thin_border
+
+        # Total Row
+        tot_row_num = len(res_df) + 2
+        ws.cell(row=tot_row_num, column=1, value="TOTAL").font = total_font
+        ws.cell(row=tot_row_num, column=4, value=f"=SUM(D2:D{tot_row_num-1})").font = total_font
+        ws.cell(row=tot_row_num, column=7, value=f"=SUM(G2:G{tot_row_num-1})").font = total_font
+        ws.cell(row=tot_row_num, column=8, value=f"=SUM(H2:H{tot_row_num-1})").font = total_font
+
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=tot_row_num, column=col_num)
+            cell.fill = total_fill
+
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or "")) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+        output = io.BytesIO()
+        wb.save(output)
+        excel_bytes = output.getvalue()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.download_button(
+            label="📥 DOWNLOAD WINDOW DETAILS SHEET (.XLSX)",
+            data=excel_bytes,
+            file_name="WINDOW_DETAILS_SUMMARY.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=False
+        )
     else:
         st.warning("No valid window rows found in the sheet. Please check the selected Reading Mode Option in sidebar.")
