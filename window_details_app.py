@@ -237,7 +237,7 @@ def process_excel_with_mode(file_obj, format_mode):
     return pd.DataFrame(summary), target_sheet
 
 
-# EXACT GLOBAL CSS OVERRIDE
+# EXACT GLOBAL CSS OVERRIDE (EXACT MATCHING BUTTON STYLING & SPACING)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -253,14 +253,13 @@ st.markdown("""
         border-right: 1px solid #e2e8f0 !important;
     }
 
-    /* Sidebar Divider Line */
     [data-testid="stSidebar"] hr {
         margin-top: 1rem !important;
         margin-bottom: 1.5rem !important;
         border-color: #cbd5e1 !important;
     }
     
-    /* Header Container */
+    /* Header Card */
     .header-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -287,7 +286,13 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* SOLID BUTTONS MATCHING ORIGINAL MODULE */
+    /* BUTTON WRAPPERS & CONTAINER SPACING */
+    [data-testid="column"] {
+        padding-right: 0px !important;
+        padding-left: 0px !important;
+    }
+    
+    /* Blue Process Button */
     div.btn-blue button {
         background-color: #2563eb !important;
         color: #ffffff !important;
@@ -298,11 +303,13 @@ st.markdown("""
         border: none !important;
         width: 100% !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        transition: background-color 0.2s ease;
     }
     div.btn-blue button:hover {
         background-color: #1d4ed8 !important;
     }
 
+    /* Red Reset Button */
     div.btn-red button {
         background-color: #dc2626 !important;
         color: #ffffff !important;
@@ -313,12 +320,13 @@ st.markdown("""
         border: none !important;
         width: 100% !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        transition: background-color 0.2s ease;
     }
     div.btn-red button:hover {
         background-color: #b91c1c !important;
     }
 
-    /* Force text/icons inside buttons to stay white */
+    /* White Icons/Text inside Buttons */
     div.btn-blue button *, div.btn-red button * {
         color: #ffffff !important;
     }
@@ -332,7 +340,7 @@ if 'sheet_used' not in st.session_state:
     st.session_state['sheet_used'] = None
 
 # =========================================================
-# SIDEBAR (EXACTLY MATCHING MODULE 1 SOURCE LOGO SIZE & LAYOUT)
+# SIDEBAR LOGO AND OPTIONS
 # =========================================================
 with st.sidebar:
     logo_file = get_image_path("logo.png")
@@ -365,16 +373,18 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-# Buttons Row
-st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-col_p, col_r, _ = st.columns([2, 2, 4])
+# Buttons Row with EXACT gap and width matching original layout
+st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
 
-with col_p:
+# Columns with gap='small' ensuring precise gap between blue and red buttons
+btn_col1, btn_col2, _ = st.columns([2.2, 2.2, 5.6], gap="small")
+
+with btn_col1:
     st.markdown('<div class="btn-blue">', unsafe_allow_html=True)
     btn_process = st.button("🔗 Process Sheet", key="btn_process_sheet")
     st.markdown('</div>', unsafe_allow_html=True)
 
-with col_r:
+with btn_col2:
     st.markdown('<div class="btn-red">', unsafe_allow_html=True)
     btn_reset = st.button("🗑️ Reset Data", key="btn_reset_sheet")
     st.markdown('</div>', unsafe_allow_html=True)
