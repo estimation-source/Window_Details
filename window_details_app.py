@@ -451,7 +451,7 @@ if st.session_state['df_result'] is not None:
 
     if not res_df.empty:
         # Dashboard KPI Cards
-        st.markdown('<div class="step-header">📊 Step 2: Requirement Sheet Dashboard Analytics</div>', unsafe_allow_html=True)
+        st.markdown('<div class="step-header">📊 Step 2: Windows Details Dashboard Analytics</div>', unsafe_allow_html=True)
         
         tot_types = len(res_df)
         tot_qty = res_df["Qty"].sum()
