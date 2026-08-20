@@ -236,7 +236,7 @@ def process_excel_with_mode(file_obj, format_mode):
     return pd.DataFrame(summary), target_sheet
 
 
-# EXACT GLOBAL CSS OVERRIDE WITH DIRECT STREAMLIT BUTTON TARGETING
+# STYLING WITH GUARANTEED OVERRIDE
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -285,39 +285,52 @@ st.markdown("""
         margin-bottom: 12px;
     }
 
-    /* DIRECT TARGETING FOR STREAMLIT BUTTONS */
-    div[data-testid="stColumn"]:nth-of-type(1) div.stButton > button {
+    /* FORCED BLUE BUTTON STYLING BY KEY ATTRIBUTE */
+    div[aria-label="btn_process_sheet"] button,
+    button[key="btn_process_sheet"],
+    .st-key-btn_process_sheet button {
         background-color: #2563eb !important;
+        background: #2563eb !important;
         color: #ffffff !important;
         border-radius: 8px !important;
         height: 42px !important;
         font-weight: 600 !important;
         font-size: 14px !important;
         border: none !important;
-        width: 100% !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
     }
-    div[data-testid="stColumn"]:nth-of-type(1) div.stButton > button:hover {
+    
+    div[aria-label="btn_process_sheet"] button:hover,
+    button[key="btn_process_sheet"]:hover,
+    .st-key-btn_process_sheet button:hover {
         background-color: #1d4ed8 !important;
+        background: #1d4ed8 !important;
     }
 
-    div[data-testid="stColumn"]:nth-of-type(2) div.stButton > button {
+    /* FORCED RED BUTTON STYLING BY KEY ATTRIBUTE */
+    div[aria-label="btn_reset_sheet"] button,
+    button[key="btn_reset_sheet"],
+    .st-key-btn_reset_sheet button {
         background-color: #dc2626 !important;
+        background: #dc2626 !important;
         color: #ffffff !important;
         border-radius: 8px !important;
         height: 42px !important;
         font-weight: 600 !important;
         font-size: 14px !important;
         border: none !important;
-        width: 100% !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
     }
-    div[data-testid="stColumn"]:nth-of-type(2) div.stButton > button:hover {
+
+    div[aria-label="btn_reset_sheet"] button:hover,
+    button[key="btn_reset_sheet"]:hover,
+    .st-key-btn_reset_sheet button:hover {
         background-color: #b91c1c !important;
+        background: #b91c1c !important;
     }
 
-    /* Force text and icons inside button to be white */
-    div.stButton > button * {
+    /* Text Color Inside Buttons */
+    .st-key-btn_process_sheet button *, .st-key-btn_reset_sheet button * {
         color: #ffffff !important;
     }
     </style>
@@ -363,15 +376,15 @@ st.markdown('<div class="step-header">📁 Step 1: Upload BOQ Excel File</div>',
 
 uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
 
-# Buttons Row with EXACT spacing and layout match
 st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
-btn_col1, btn_col2, _ = st.columns([2.5, 2.5, 5], gap="small")
+# Layout Columns with gap and exact sizing
+col1, col2, _ = st.columns([2.5, 2.5, 5])
 
-with btn_col1:
+with col1:
     btn_process = st.button("🔗 Process Sheet", key="btn_process_sheet", use_container_width=True)
 
-with btn_col2:
+with col2:
     btn_reset = st.button("🗑️ Reset Data", key="btn_reset_sheet", use_container_width=True)
 
 # Reset Logic
