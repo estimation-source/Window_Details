@@ -6,7 +6,7 @@ import streamlit as st
 
 # Page Config
 st.set_page_config(
-    page_title="Window Details | Glass Calculator",
+    page_title="Window Details Module",
     page_icon="🪟",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -87,7 +87,7 @@ def parse_quotation_block_sheet(file_obj, sheet_name):
         row_vals = [str(val).strip() for val in df_raw.iloc[r].values if pd.notna(val) and str(val).strip() != "nan"]
         row_str = " ".join(row_vals)
 
-        # Detect Start of Block (Code :)
+        # Detect Start of Block
         if "CODE :" in row_str.upper() or "CODE:" in row_str.upper():
             code_val = ""
             name_val = ""
@@ -190,7 +190,6 @@ def process_excel_with_mode(file_obj, format_mode):
         parsed_rows = parse_quotation_block_sheet(file_obj, target_sheet)
 
     else:  # AUTO-DETECT
-        # Search all sheets for CODE:
         found_block_sheet = None
         for s in sheet_names:
             txt = " ".join([str(v) for v in pd.read_excel(file_obj, sheet_name=s, header=None).fillna('').values.flatten()]).upper()
@@ -243,34 +242,94 @@ def process_excel_with_mode(file_obj, format_mode):
 
     return pd.DataFrame(summary), target_sheet
 
-# Custom UI CSS
+
+# Custom Matching UI CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', sans-serif !important;
         background-color: #f8fafc !important;
         color: #0f172a !important;
     }
-    .header-container {
+    
+    /* Header Card */
+    .header-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         padding: 24px 32px;
         margin-bottom: 24px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-    .main-title { font-size: 22px !important; font-weight: 800 !important; color: #0f172a; }
-    .main-subtitle { font-size: 13px !important; color: #64748b; }
+    .main-title {
+        font-size: 22px !important;
+        font-weight: 800 !important;
+        color: #0f172a;
+        margin-bottom: 4px;
+    }
+    .main-subtitle {
+        font-size: 13px !important;
+        color: #64748b;
+    }
+
+    /* Section Subtitle */
+    .step-header {
+        font-size: 15px !important;
+        font-weight: 700 !important;
+        color: #1e293b;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Custom Blue Button */
+    div.stButton > button[key="btn_process"] {
+        background-color: #2563eb !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 10px 24px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        width: 100% !important;
+        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2) !important;
+    }
+    div.stButton > button[key="btn_process"]:hover {
+        background-color: #1d4ed8 !important;
+    }
+
+    /* Custom Red Button */
+    div.stButton > button[key="btn_reset"] {
+        background-color: #dc2626 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 10px 24px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        width: 100% !important;
+        box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2) !important;
+    }
+    div.stButton > button[key="btn_reset"]:hover {
+        background-color: #b91c1c !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Options
+# Session State for storing processed results
+if 'df_result' not in st.session_state:
+    st.session_state['df_result'] = None
+if 'sheet_used' not in st.session_state:
+    st.session_state['sheet_used'] = None
+
+# Sidebar (Cleaned - Quick Guide Removed)
 with st.sidebar:
     if logo_b64:
-        st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="width:140px;">', unsafe_allow_html=True)
-    st.markdown("### 🪟 Window Details Module")
+        st.markdown(f'<img src="data:image/png;base64,{logo_b64}" style="width:140px; margin-bottom: 20px;">', unsafe_allow_html=True)
     
-    st.markdown("---")
     st.markdown("#### ⚙️ Reading Mode Option")
     selected_mode = st.radio(
         "Select Sheet Format Reader:",
@@ -278,42 +337,70 @@ with st.sidebar:
         help="Choose Option 1 for MEASUREMENT horizontal table sheet, Option 2 for WinSquare Quotation block sheet."
     )
 
-# Header
+# Top Banner Header
 st.markdown("""
-    <div class="header-container">
-        <div class="main-title">Multi-Format Window Details Engine</div>
-        <div class="main-subtitle">Select Reader Option for Measurement Table OR Quotation Block Sheets</div>
+    <div class="header-card">
+        <div class="main-title">Universal Window Details & Glass SQFT Engine</div>
+        <div class="main-subtitle">Supports Measurement Sheets, Quotation Sheets & Block Layouts</div>
     </div>
 """, unsafe_allow_html=True)
 
-# File Upload
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx", "xls"])
+# Step 1: Upload BOQ Excel Files
+st.markdown('<div class="step-header">📁 Step 1: Upload Excel File</div>', unsafe_allow_html=True)
 
-if uploaded_file:
-    try:
-        result_df, sheet_used = process_excel_with_mode(uploaded_file, selected_mode)
+uploaded_file = st.file_uploader("", type=["xlsx", "xls"], label_visibility="collapsed")
+
+col_btn1, col_btn2, _ = st.columns([1.5, 1.5, 4])
+
+with col_btn1:
+    btn_process = st.button("🔗 Process Sheet", key="btn_process")
+
+with col_btn2:
+    btn_reset = st.button("🗑️ Reset Data", key="btn_reset")
+
+# Handle Reset
+if btn_reset:
+    st.session_state['df_result'] = None
+    st.session_state['sheet_used'] = None
+    st.rerun()
+
+# Handle Process
+if btn_process:
+    if uploaded_file is not None:
+        try:
+            with st.spinner("Processing file..."):
+                df_res, used_sheet = process_excel_with_mode(uploaded_file, selected_mode)
+                st.session_state['df_result'] = df_res
+                st.session_state['sheet_used'] = used_sheet
+        except Exception as e:
+            st.error(f"Error parsing sheet: {str(e)}")
+    else:
+        st.warning("Please upload an Excel file first.")
+
+# Display Results
+if st.session_state['df_result'] is not None:
+    res_df = st.session_state['df_result']
+    used_sheet = st.session_state['sheet_used']
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.success(f"Successfully processed sheet: **'{used_sheet}'**")
+
+    if not res_df.empty:
+        st.markdown("### 📑 Window Details Output Table")
+        st.dataframe(res_df, use_container_width=True)
+
+        # Metrics Summary
+        st.markdown("<br>", unsafe_allow_html=True)
+        m1, m2, m3 = st.columns(3)
         
-        st.success(f"Mode Selected: **{selected_mode}** | Processed Sheet: **'{sheet_used}'**")
-        
-        if not result_df.empty:
-            st.markdown("### 📑 Window Details Output Table")
-            st.dataframe(result_df, use_container_width=True)
+        tot_all = res_df["ALL Window SQFT"].sum()
+        tot_spec = res_df["Special glass SQFT"].sum()
 
-            # Metrics
-            st.markdown("<br>", unsafe_allow_html=True)
-            c1, c2, c3 = st.columns(3)
-            
-            tot_all = result_df["ALL Window SQFT"].sum()
-            tot_spec = result_df["Special glass SQFT"].sum()
-
-            with c1:
-                st.metric("Total Window Types", len(result_df))
-            with c2:
-                st.metric("Total ALL Window SQFT", f"{tot_all:,.2f} sqft")
-            with c3:
-                st.metric("Total Special Glass SQFT", f"{tot_spec:,.2f} sqft")
-        else:
-            st.warning("No valid window rows found in the sheet. Try changing the Reading Mode option from sidebar.")
-
-    except Exception as e:
-        st.error(f"Error parsing sheet: {str(e)}")
+        with m1:
+            st.metric("Total Window Types", len(res_df))
+        with m2:
+            st.metric("Total ALL Window SQFT", f"{tot_all:,.2f} sqft")
+        with m3:
+            st.metric("Total Special Glass SQFT", f"{tot_spec:,.2f} sqft")
+    else:
+        st.warning("No valid window rows found in the sheet. Please check the selected Reading Mode Option in sidebar.")
